@@ -21,11 +21,20 @@ async function api<T>(path: string, method = 'GET', body?: unknown, signal?: Abo
 const date = (value: string) => new Intl.DateTimeFormat('es-ES',{ dateStyle:'short',timeStyle:'short' }).format(new Date(value));
 const readableError = (error: unknown) => error instanceof Error ? error.message : 'No se ha podido conectar. Vuelve a intentarlo.';
 
+function OrderRows({orders,userId}: {orders: Order[]; userId?: number}) {
+  return <>{!orders.length && <p className="py-3 text-sm muted">No hay pedidos todavía</p>}
+    {orders.map(order=><article key={order.id} className="order py-2">
+      <h2 className="text-sm font-semibold break-words">{order.display_name}{order.telegram_user_id===String(userId) && <span className="font-normal muted"> · Tú</span>}</h2>
+      <p className="whitespace-pre-wrap break-words text-sm">{order.content}</p>
+    </article>)}
+  </>;
+}
+
 function App() {
   const [session,setSession] = useState<Session | null>(null);
   const [snapshot,setSnapshot] = useState<Snapshot | null>(null);
   const [history,setHistory] = useState<History>({ lists:[],next_cursor:null });
-  const [screen,setScreen] = useState<'list' | 'create' | 'history'>('history');
+  const [screen,setScreen] = useState<'list' | 'create' | 'history' | 'orders'>('history');
   const [error,setError] = useState('');
   const [notice,setNotice] = useState('');
   const [busy,setBusy] = useState(true);
@@ -43,7 +52,7 @@ function App() {
   const userId = useRef<number | null>(null);
   const selectedId = useRef<string | null>(null);
   const mounted = useRef(true);
-  const orderSection = useRef<HTMLElement>(null);
+  const screenTitle = useRef<HTMLHeadingElement>(null);
   const polling = useRef<AbortController | null>(null);
 
   const apply = useCallback((next: Snapshot, reset = false) => {
@@ -67,7 +76,7 @@ function App() {
 
   const loadHistory = useCallback(async (current: Session, more = false) => {
     if (!current.group) return;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setNotice('');
     try {
       const next = await api<History>(`/api/groups/${current.group.id}/lists${more && history.next_cursor ? `?before=${history.next_cursor}` : ''}`);
       setHistory(previous => ({...next, lists:more ? [...previous.lists,...next.lists] : next.lists}));
@@ -102,7 +111,7 @@ function App() {
 
   // Recursive timeout starts only after the previous request finishes. No interval overlap.
   useEffect(() => {
-    if (screen!=='list' || !snapshot?.list.writable) return;
+    if ((screen!=='list' && screen!=='orders') || !snapshot?.list.writable) return;
     const id=snapshot.list.id;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let disposed=false;
@@ -128,6 +137,11 @@ function App() {
     schedule();
     return ()=>{disposed=true;clearTimeout(timer);polling.current?.abort();document.removeEventListener('visibilitychange',visibility);webapp?.offEvent('activated',visibility);webapp?.offEvent('deactivated',visibility);};
   },[screen,snapshot?.list.id,snapshot?.list.writable,apply]);
+
+  useEffect(() => {
+    window.scrollTo({top:0,behavior:'instant'});
+    screenTitle.current?.focus({preventScroll:true});
+  },[screen]);
 
   async function mutate(path: string, method: string, body: unknown, success: string) {
     if (busy) return;
@@ -156,10 +170,13 @@ function App() {
     catch {setSummary(text);setNotice('Selecciona el resumen y cópialo.');}
   }
 
-  return <main className="mx-auto max-w-lg px-4 py-3">
+  const hasMoreOrders = (snapshot?.orders.length ?? 0) > 3;
+  const panelScreen = screen==='history' || screen==='orders';
+
+  return <main className={`mx-auto max-w-lg px-4 py-3 ${panelScreen ? 'panel-layout':''}`}>
     <header className="mb-3 flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2.5"><img src="/bot-icon.jpg" alt="Listas" width={40} height={40} className="bot-avatar"/><p className="truncate text-sm muted">{session?.group?.title ?? 'Pedidos compartidos'}</p></div>
-      {session?.group && <button className="button secondary shrink-0" disabled={busy} onClick={()=>{polling.current?.abort();void loadHistory(session);}}>Historial de listas</button>}
+      {session?.group && (screen==='list' || screen==='create') && <button className="button secondary shrink-0" disabled={busy} onClick={()=>{polling.current?.abort();void loadHistory(session);}}>Historial de listas</button>}
     </header>
     {error && <div role="alert" className="message error">{error}</div>}
     {notice && <div role="status" className="message">{notice}</div>}
@@ -170,36 +187,43 @@ function App() {
       {session?.bot_username && <a className="button primary block text-center" href={`https://t.me/${session.bot_username}?startgroup=true`}>Añadir a un grupo</a>}
     </section>}
     {session?.group && screen==='create' && <form onSubmit={event=>{void create(event);}} className="space-y-3">
-      <h1 className="text-xl font-semibold">Crear lista</h1>
+      <h1 ref={screenTitle} tabIndex={-1} className="text-xl font-semibold">Crear lista</h1>
       <label>Título de la lista<input autoComplete="off" value={title} onChange={event=>{setTitle(event.target.value);requestId.current=crypto.randomUUID();}} placeholder="Cena de hoy" required maxLength={100}/></label>
       <label>Descripción <span className="muted">(opcional)</span><textarea value={description} onChange={event=>{setDescription(event.target.value);requestId.current=crypto.randomUUID();}} rows={2} maxLength={500}/></label>
       <label>Fecha límite <span className="muted">(opcional)</span><input type="datetime-local" value={deadline} onChange={event=>{setDeadline(event.target.value);requestId.current=crypto.randomUUID();}}/></label>
       <button className="button primary w-full" type="submit" disabled={busy || !title.trim()}>{busy ? 'Creando…':'Crear lista'}</button>
       <p className="text-xs muted">Se publicará un botón en el grupo. La fecha límite utiliza la hora de tu dispositivo.</p>
     </form>}
-    {session?.group && screen==='history' && <section>
-      <div className="mb-2 flex items-center justify-between"><h1 className="text-lg font-semibold">Historial de listas</h1>{session.admin && <button className="button secondary" disabled={busy} onClick={()=>{setScreen('create');setError('');setNotice('');}}>Crear lista</button>}</div>
-      {!history.lists.length && <p className="py-4 muted">Todavía no hay listas en este grupo.</p>}
-      {history.lists.map(list=><button disabled={busy} onClick={()=>{void openList(list.id);}} key={list.id} className="history-row w-full text-left">
-        <span className="font-medium">{list.title}</span><span className="block text-xs muted">{list.status==='closed' ? 'Lista cerrada':list.is_primary ? 'Lista abierta · Principal':'Lista abierta'} · {date(list.created_at)}</span>
-      </button>)}
-      {history.next_cursor && <button className="button secondary mt-3 w-full" disabled={busy} onClick={()=>{void loadHistory(session,true);}}>Mostrar más</button>}
+    {session?.group && screen==='history' && <section className="browse-panel">
+      <h1 ref={screenTitle} tabIndex={-1} className="mb-2 text-lg font-semibold">Historial de listas</h1>
+      <div className="browse-scroll" tabIndex={0} role="region" aria-label="Listas por fecha de creación, más recientes primero">
+        {!history.lists.length && <p className="py-4 muted">Todavía no hay listas en este grupo.</p>}
+        {history.lists.map(list=><button disabled={busy} onClick={()=>{void openList(list.id);}} key={list.id} className="history-row w-full text-left">
+          <span className="font-medium">{list.title}</span><span className="block text-xs muted">{list.status==='closed' ? 'Lista cerrada':list.is_primary ? 'Lista abierta · Principal':'Lista abierta'} · {date(list.created_at)}</span>
+        </button>)}
+        {history.next_cursor && <button className="button secondary mt-3 w-full" disabled={busy} onClick={()=>{void loadHistory(session,true);}}>Mostrar más</button>}
+      </div>
+      {session.admin && <footer className="panel-footer"><button className="button primary w-full" disabled={busy} onClick={()=>{setScreen('create');setError('');setNotice('');}}>Crear lista</button></footer>}
+    </section>}
+    {screen==='orders' && snapshot && <section className="browse-panel">
+      <h1 ref={screenTitle} tabIndex={-1} className="text-lg font-semibold">Pedidos ({snapshot.orders.length})</h1>
+      <p className="mb-2 text-sm muted break-words">{snapshot.list.title}</p>
+      <div className="browse-scroll" tabIndex={0} role="region" aria-label="Todos los pedidos">
+        <div className="orders"><OrderRows orders={snapshot.orders} userId={session?.user.id}/></div>
+      </div>
+      <footer className="panel-footer"><button className="button secondary w-full" onClick={()=>setScreen('list')}>Volver a la lista</button></footer>
     </section>}
     {screen==='list' && snapshot && <>
       <section className="mb-2">
-        <h1 className="text-xl font-semibold break-words">{snapshot.list.title}</h1>
+        <h1 ref={screenTitle} tabIndex={-1} className="text-xl font-semibold break-words">{snapshot.list.title}</h1>
         {snapshot.list.description && <p className="mt-2 whitespace-pre-wrap text-sm">{snapshot.list.description}</p>}
         <div className="list-meta mt-1 text-xs">
           {snapshot.list.deadline && <p className="muted">Fecha límite: {date(snapshot.list.deadline)}</p>}
           <p className={`status ${snapshot.list.writable ? 'open':''}`}>{snapshot.list.writable ? 'Lista abierta':'Lista cerrada'}</p>
         </div>
       </section>
-      <section ref={orderSection} tabIndex={-1} aria-label="Pedidos" className="orders mb-3">
-        {!snapshot.orders.length && <p className="py-3 text-sm muted">No hay pedidos todavía</p>}
-        {snapshot.orders.map(order=><article key={order.id} className="order py-2">
-          <h2 className="text-sm font-semibold break-words">{order.display_name}{order.telegram_user_id===String(session?.user.id) && <span className="font-normal muted"> · Tú</span>}</h2>
-          <p className="whitespace-pre-wrap break-words text-sm">{order.content}</p>
-        </article>)}
+      <section aria-label={hasMoreOrders ? 'Vista previa de pedidos':'Pedidos'} className={`orders mb-3 ${hasMoreOrders ? 'orders-preview':''}`}>
+        <OrderRows orders={snapshot.orders.slice(0,3)} userId={session?.user.id}/>
       </section>
       {snapshot.list.writable && <form onSubmit={event=>{event.preventDefault();void mutate(`/api/lists/${snapshot.list.id}/my-order`,'PUT',{content},'Pedido guardado');}}>
         <label><span className="order-label">Mi pedido:</span><textarea value={content} rows={2} maxLength={1000} required placeholder="¿Qué te apetece?" onChange={event=>{setContent(event.target.value);dirtyRef.current=true;setDirty(true);}}/></label>
@@ -208,11 +232,11 @@ function App() {
           {snapshot.orders.some(order=>order.telegram_user_id===String(session?.user.id)) && <button className="button destructive" type="button" disabled={busy} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/my-order`,'DELETE',undefined,'Pedido eliminado');}}>Eliminar mi pedido</button>}
         </div>
       </form>}
-      <div className="action-row mt-3">
-        <button className="button secondary flex-1" onClick={()=>{orderSection.current?.scrollIntoView({behavior:'smooth',block:'start'});orderSection.current?.focus();}}>Ver pedidos</button>
-        {snapshot.list.can_close && <button className="button secondary flex-1" disabled={busy} onClick={()=>setConfirmClose(true)}>Cerrar lista</button>}
-      </div>
-      {confirmClose && <div className="message mt-2" role="group" aria-label="Confirmar cierre"><p className="text-sm">Los pedidos quedarán en modo de solo lectura.</p><div className="mt-2 flex gap-3"><button className="text-button danger" disabled={busy} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/close`,'POST',undefined,'Lista cerrada');}}>Confirmar cierre</button><button className="text-button" onClick={()=>setConfirmClose(false)}>Cancelar</button></div></div>}
+      {(hasMoreOrders || snapshot.list.can_close) && <div className="action-row mt-3">
+        {hasMoreOrders && <button className="button secondary" aria-label={`Ver pedidos (${snapshot.orders.length})`} disabled={busy} onClick={()=>{setConfirmClose(false);setScreen('orders');}}>Ver pedidos</button>}
+        {snapshot.list.can_close && <button className="button destructive" disabled={busy} onClick={()=>setConfirmClose(true)}>Cerrar lista</button>}
+      </div>}
+      {confirmClose && snapshot.list.can_close && <div className="message close-confirmation mt-2" role="group" aria-label="Confirmar cierre"><p className="text-sm">Los pedidos quedarán en modo de solo lectura.</p><div className="action-row mt-2"><button className="button destructive" disabled={busy} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/close`,'POST',undefined,'Lista cerrada');}}>Confirmar cierre</button><button className="button secondary" disabled={busy} onClick={()=>setConfirmClose(false)}>Cancelar</button></div></div>}
       <div className="action-row secondary-actions mt-3">
         <button className="button secondary" onClick={()=>{void copySummary();}}>Copiar resumen</button>
         {session?.admin && <button className="button secondary" disabled={busy} onClick={()=>{setScreen('create');setError('');setNotice('');}}>Crear lista</button>}

@@ -35,3 +35,13 @@ textarea {resize:vertical;}
 .action-row .button {min-width:0;}
 .destructive {background:var(--tg-theme-destructive-text-color,#c84646);color:#fff;}
 .secondary-actions {border-top:1px solid var(--app-separator);padding-top:.75rem;}
+
+.panel-layout {height:100dvh;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.panel-layout>header,.panel-layout>.message,.browse-panel>h1,.browse-panel>p {flex-shrink:0;}
+.browse-panel {flex:1;min-height:0;display:flex;flex-direction:column;}
+.browse-scroll {flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.browse-scroll:focus-visible {outline:2px solid var(--app-button);outline-offset:-2px;}
+.panel-footer {flex-shrink:0;padding-top:.75rem;background:var(--app-bg);}
+.orders-preview .order:last-child {max-height:5rem;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom,#000 20%,transparent 100%);mask-image:linear-gradient(to bottom,#000 20%,transparent 100%);}
+h1[tabindex="-1"]:focus {outline:none;}
+.close-confirmation .secondary {background:var(--app-bg);}
