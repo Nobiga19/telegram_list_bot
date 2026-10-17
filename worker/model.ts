@@ -3,14 +3,14 @@ import { telegram, isMember, isAdmin, type ChatMember } from './telegram';
 
 export interface Group { id: string; telegram_chat_id: string; title: string; bot_is_admin: number; last_update_id: number; last_announced_update_id: number; last_event_date: number; last_announced_event_date: number }
 export interface List {
-  id: string; group_id: string; title: string; description: string; status: 'open' | 'closed'; is_primary: number;
+  id: string; group_id: string; deleted_at: string | null; title: string; description: string; status: 'open' | 'closed'; is_primary: number;
   created_by: string; created_at: string; closed_at: string | null; deadline: string | null;
   message_id: number | null; publish_state: 'pending' | 'sending' | 'sent' | 'failed'; publish_started_at: number | null;
 }
 export interface Order { id: string; list_id: string; telegram_user_id: string; display_name: string; content: string; created_at: string; updated_at: string }
 
 export const opaque = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-export const writable = (list: List, now = Date.now()) => list.status === 'open' && (!list.deadline || Date.parse(list.deadline) > now);
+export const writable = (list: List, now = Date.now()) => !list.deleted_at && list.status === 'open' && (!list.deadline || Date.parse(list.deadline) > now);
 
 export async function launchGroup(env: Env, identity: Identity): Promise<Group | null> {
   const prefix = identity.startParam.slice(0, 2), id = identity.startParam.slice(2);
@@ -31,7 +31,7 @@ export async function access(env: Env, identity: Identity, groupId: string): Pro
 
 export async function getList(env: Env, id: string): Promise<List> {
   if (!opaque(id)) throw new AppError(404, 'Lista no encontrada.');
-  const list = await env.DB.prepare('SELECT * FROM lists WHERE id = ?').bind(id).first<List>();
+  const list = await env.DB.prepare('SELECT * FROM lists WHERE id = ? AND deleted_at IS NULL').bind(id).first<List>();
   if (!list) throw new AppError(404, 'Lista no encontrada.');
   if (list.status === 'open' && list.deadline && Date.parse(list.deadline) <= Date.now()) {
     await env.DB.prepare("UPDATE lists SET status='closed', is_primary=0, closed_at=COALESCE(closed_at, deadline) WHERE id=? AND status='open' AND deadline <= ?")

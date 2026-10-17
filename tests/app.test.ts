@@ -131,6 +131,54 @@ describe('Lists, membership and SQL',()=>{
     expect((await request(`/api/lists/${listId}/orders`,'GET',undefined,20)).status).toBe(200);
     const history=await (await request(`/api/groups/${groupA}/lists`)).json() as {lists:{status:string}[]};expect(history.lists[0].status).toBe('closed');
   });
+  it.each(['open','closed','expired'])('lets current admins delete %s lists, removes content, and preserves other lists and launch context',async state=>{
+    await create();await create(secondId);
+    await request(`/api/lists/${listId}/my-order`,'PUT',{content:'Información de prueba'},20);
+    await request(`/api/lists/${secondId}/my-order`,'PUT',{content:'Conservar'},20);
+    if(state==='closed') await request(`/api/lists/${listId}/close`,'POST');
+    if(state==='expired') await env.DB.prepare('UPDATE lists SET deadline=? WHERE id=?').bind('2000-01-01T00:00:00.000Z',listId).run();
+    const viewer=await (await request(`/api/lists/${listId}`,'GET',undefined,20)).json() as {list:{can_delete:boolean}};
+    expect(viewer.list.can_delete).toBe(false);
+    expect((await request(`/api/lists/${listId}`)).status).toBe(200);
+    expect((await request(`/api/lists/${listId}`,'DELETE',undefined,10,`l_${listId}`)).status).toBe(200);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM orders WHERE list_id=?').bind(listId).first('n')).toBe(0);
+    const removed=await env.DB.prepare('SELECT * FROM lists WHERE id=?').bind(listId).first<{title:string;description:string;is_primary:number;deleted_at:string}>();
+    expect(removed).toMatchObject({title:'Lista eliminada',description:'',is_primary:0});expect(removed?.deleted_at).toBeTruthy();
+    for(const [path,method,body] of [[`/api/lists/${listId}`,'GET',undefined],[`/api/lists/${listId}/orders`,'GET',undefined],[`/api/lists/${listId}/my-order`,'PUT',{content:'No'}],[`/api/lists/${listId}/my-order`,'DELETE',undefined],[`/api/lists/${listId}/close`,'POST',undefined],[`/api/lists/${listId}/publish`,'POST',undefined],[`/api/lists/${listId}`,'DELETE',undefined]] as const) {
+      expect((await request(path,method,body)).status).toBe(404);
+    }
+    const history=await (await request(`/api/groups/${groupA}/lists`,'GET',undefined,10,`l_${listId}`)).json() as {lists:{id:string}[]};
+    expect(history.lists.map(list=>list.id)).toEqual([secondId]);
+    const session=await (await request('/api/session','GET',undefined,10,`l_${listId}`)).json() as {group:{id:string};list_id:string|null};
+    expect(session.group.id).toBe(groupA);expect(session.list_id).toBeNull();
+    expect((await request(`/api/lists/${secondId}`,'GET',undefined,10,`l_${listId}`)).status).toBe(200);
+    expect((await create()).status).toBe(409);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM orders WHERE list_id=?').bind(secondId).first('n')).toBe(1);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM groups').first('n')).toBe(2);
+  });
+  it('rejects deletion by members, demoted creators, nonmembers, or another group',async()=>{
+    await create();
+    expect((await request(`/api/lists/${listId}`,'DELETE',undefined,20)).status).toBe(403);
+    expect((await request(`/api/lists/${listId}`,'DELETE',undefined,30)).status).toBe(403);
+    expect((await request(`/api/lists/${listId}`,'DELETE',undefined,10,`g_${groupB}`)).status).toBe(403);
+    statuses.set('-100123:10','member');
+    expect((await request(`/api/lists/${listId}`,'DELETE')).status).toBe(403);
+    expect(await env.DB.prepare('SELECT deleted_at FROM lists WHERE id=?').bind(listId).first('deleted_at')).toBeNull();
+    statuses.set('-100123:20','creator');
+    const admin=await (await request(`/api/lists/${listId}`,'GET',undefined,20)).json() as {list:{can_delete:boolean}};
+    expect(admin.list.can_delete).toBe(true);
+    expect((await request(`/api/lists/${listId}`,'DELETE',undefined,20)).status).toBe(200);
+  });
+  it('rolls back deletion if removing contributions fails',async()=>{
+    await create();await request(`/api/lists/${listId}/my-order`,'PUT',{content:'Conservar'},20);
+    await env.DB.prepare("CREATE TRIGGER fail_delete BEFORE DELETE ON orders BEGIN SELECT RAISE(ABORT,'test rollback'); END").run();
+    try {
+      expect((await request(`/api/lists/${listId}`,'DELETE')).status).toBe(503);
+      expect(await env.DB.prepare('SELECT deleted_at FROM lists WHERE id=?').bind(listId).first('deleted_at')).toBeNull();
+      expect(await env.DB.prepare('SELECT title FROM lists WHERE id=?').bind(listId).first('title')).toBe('Cena de hoy');
+      expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM orders WHERE list_id=?').bind(listId).first('n')).toBe(1);
+    } finally {await env.DB.prepare('DROP TRIGGER fail_delete').run();}
+  });
   it('enforces deadlines inside the mutation SQL, not just the preflight check',async()=>{
     await create();await env.DB.prepare('UPDATE lists SET deadline=? WHERE id=?').bind('2000-01-01T00:00:00.000Z',listId).run();
     expect((await request(`/api/lists/${listId}/my-order`,'PUT',{content:'Tarde'},20)).status).toBe(409);

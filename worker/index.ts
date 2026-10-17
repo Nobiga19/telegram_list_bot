@@ -46,7 +46,7 @@ async function view(c: Ctx, list: List, admin: boolean) {
   // The list has a hard 500-order cap: every response and query remains bounded.
   const orders = await c.env.DB.prepare('SELECT * FROM orders WHERE list_id=? ORDER BY created_at,id LIMIT 500').bind(list.id).all<Order>();
   return {
-    list: { ...list, can_close: writable(list) && (admin || list.created_by === String(c.get('identity').user.id)), writable: writable(list) },
+    list: { ...list, can_delete: admin, can_close: writable(list) && (admin || list.created_by === String(c.get('identity').user.id)), writable: writable(list) },
     orders: orders.results,
   };
 }
@@ -59,8 +59,10 @@ app.get('/api/session', async c => {
     return c.json({ user: identity.user, group: null, bot_username: c.env.BOT_USERNAME });
   }
   const { admin } = await access(c.env, identity, group.id);
+  const listId = identity.startParam.startsWith('l_')
+    ? await c.env.DB.prepare('SELECT id FROM lists WHERE id=? AND deleted_at IS NULL').bind(identity.startParam.slice(2)).first<string>('id') : null;
   return c.json({ user: identity.user, group: { id: group.id, title: group.title }, admin,
-    list_id: identity.startParam.startsWith('l_') ? identity.startParam.slice(2) : null,
+    list_id: listId, list_deleted: identity.startParam.startsWith('l_') && !listId,
     bot_username: c.env.BOT_USERNAME });
 });
 
@@ -86,7 +88,7 @@ app.get('/api/groups/:id/lists', async c => {
   const now = new Date().toISOString();
   const query = `SELECT id,title,description,CASE WHEN status='open' AND deadline IS NOT NULL AND deadline<=? THEN 'closed' ELSE status END AS status,
     CASE WHEN deadline IS NOT NULL AND deadline<=? THEN 0 ELSE is_primary END AS is_primary,created_at,deadline
-    FROM lists WHERE group_id=? ${before ? 'AND (created_at,id) < (?,?)' : ''} ORDER BY created_at DESC,id DESC LIMIT 51`;
+    FROM lists WHERE group_id=? AND deleted_at IS NULL ${before ? 'AND (created_at,id) < (?,?)' : ''} ORDER BY created_at DESC,id DESC LIMIT 51`;
   const args = before ? [now,now,groupId,before.created_at,before.id] : [now,now,groupId];
   const result = await c.env.DB.prepare(query).bind(...args).all<List>();
   return c.json({ group: { id: group.id, title: group.title }, admin, lists: result.results.slice(0,50),
@@ -96,7 +98,7 @@ app.get('/api/groups/:id/lists', async c => {
 async function publish(c: Ctx, list: List, chatId: string): Promise<boolean> {
   if (list.publish_state === 'sent') return true;
   if (!writable(list)) return false;
-  const claimed = await c.env.DB.prepare(`UPDATE lists SET publish_state='sending',publish_started_at=? WHERE id=? AND
+  const claimed = await c.env.DB.prepare(`UPDATE lists SET publish_state='sending',publish_started_at=? WHERE id=? AND deleted_at IS NULL AND
     (publish_state IN ('pending','failed') OR (publish_state='sending' AND publish_started_at < ?))`)
     .bind(Date.now(),list.id,Date.now()-60000).run();
   if (!claimed.meta.changes) return false;
@@ -131,6 +133,7 @@ app.post('/api/lists', async c => {
     deadline = new Date(data.deadline).toISOString();
   }
   let list = await c.env.DB.prepare('SELECT * FROM lists WHERE id=?').bind(data.request_id).first<List>();
+  if (list?.deleted_at) throw new AppError(409,'Esta lista ha sido eliminada. Abre de nuevo el formulario.');
   if (list && (list.group_id !== group.id || list.created_by !== String(identity.user.id) || list.title !== title || list.description !== description || list.deadline !== deadline)) throw new AppError(409,'Solicitud ya utilizada. Abre de nuevo el formulario.');
   if (!list) {
     // D1 batch is a transaction; retries never demote the current primary list.
@@ -158,15 +161,15 @@ app.put('/api/lists/:id/my-order', async c => {
   const data = await json(c,['content']);
   const { list, identity, admin } = await listAccess(c);
   if (!writable(list)) throw new AppError(409,'La lista está cerrada.');
-  const content = textInput(data.content,'Mi pedido',1000);
+  const content = textInput(data.content,'Mi aportación',1000);
   const name = [identity.user.first_name,identity.user.last_name].filter(Boolean).join(' ').slice(0,120);
   const now = new Date().toISOString();
   const result = await c.env.DB.prepare(`INSERT INTO orders(id,list_id,telegram_user_id,display_name,content)
-    SELECT ?,id,?,?,? FROM lists WHERE id=? AND status='open' AND (deadline IS NULL OR deadline>?)
+    SELECT ?,id,?,?,? FROM lists WHERE id=? AND deleted_at IS NULL AND status='open' AND (deadline IS NULL OR deadline>?)
     AND ((SELECT COUNT(*) FROM orders WHERE list_id=?) < 500 OR EXISTS(SELECT 1 FROM orders WHERE list_id=? AND telegram_user_id=?))
     ON CONFLICT(list_id,telegram_user_id) DO UPDATE SET display_name=excluded.display_name,content=excluded.content,updated_at=?`)
     .bind(crypto.randomUUID(),String(identity.user.id),name,content,list.id,now,list.id,list.id,String(identity.user.id),now).run();
-  if (!result.meta.changes) throw new AppError(409,'Lista cerrada o límite de 500 pedidos alcanzado.');
+  if (!result.meta.changes) throw new AppError(409,'Lista cerrada o límite de 500 aportaciones alcanzado.');
   return c.json(await view(c,await getList(c.env,list.id),admin));
 });
 
@@ -174,21 +177,35 @@ app.delete('/api/lists/:id/my-order', async c => {
   const { list, identity, admin } = await listAccess(c);
   if (!writable(list)) throw new AppError(409,'La lista está cerrada.');
   const result = await c.env.DB.prepare(`DELETE FROM orders WHERE list_id=? AND telegram_user_id=? AND EXISTS(
-    SELECT 1 FROM lists WHERE id=? AND status='open' AND (deadline IS NULL OR deadline>?))`)
+    SELECT 1 FROM lists WHERE id=? AND deleted_at IS NULL AND status='open' AND (deadline IS NULL OR deadline>?))`)
     .bind(list.id,String(identity.user.id),list.id,new Date().toISOString()).run();
   const fresh = await getList(c.env,list.id);
   if (!result.meta.changes && !writable(fresh)) throw new AppError(409,'La lista está cerrada.');
   return c.json(await view(c,fresh,admin));
 });
 
+app.delete('/api/lists/:id', async c => {
+  const { list, admin } = await listAccess(c);
+  if (!admin) throw new AppError(403,'Solo los administradores del grupo pueden eliminar listas.');
+  // Keep a minimal tombstone so signed launch links still resolve to the group.
+  // Mark closed before removing contributions to reject concurrent writes.
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE lists SET deleted_at=?,status='closed',is_primary=0,
+      title='Lista eliminada',description='',created_by='',closed_at=NULL,deadline=NULL,message_id=NULL,publish_state='sent',publish_started_at=NULL
+      WHERE id=? AND deleted_at IS NULL`).bind(new Date().toISOString(),list.id),
+    c.env.DB.prepare('DELETE FROM orders WHERE list_id=?').bind(list.id),
+  ]);
+  return c.json({ deleted: true });
+});
+
 app.post('/api/lists/:id/close', async c => {
   const { list, identity, admin, group } = await listAccess(c);
   if (!admin && list.created_by !== String(identity.user.id)) throw new AppError(403,'Solo el creador o un administrador puede cerrar la lista.');
-  await c.env.DB.prepare("UPDATE lists SET status='closed',is_primary=0,closed_at=COALESCE(closed_at,?) WHERE id=? AND status='open'")
+  await c.env.DB.prepare("UPDATE lists SET status='closed',is_primary=0,closed_at=COALESCE(closed_at,?) WHERE id=? AND deleted_at IS NULL AND status='open'")
     .bind(new Date().toISOString(),list.id).run();
   if (list.message_id && list.status === 'open') c.executionCtx.waitUntil(telegram(c.env,'editMessageText',{
     chat_id: group.telegram_chat_id,message_id:list.message_id,text:`${list.title}\nLista cerrada`,
-    reply_markup:{ inline_keyboard: [[{ text:'Ver pedidos',url:launchLink(c.env,`l_${list.id}`) }]] },
+    reply_markup:{ inline_keyboard: [[{ text:'Ver lista',url:launchLink(c.env,`l_${list.id}`) }]] },
   }).catch(() => undefined));
   return c.json(await view(c,await getList(c.env,list.id),admin));
 });
