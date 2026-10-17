@@ -68,6 +68,17 @@ npm run build
 
 Los tipos de bindings/runtime se generan con Wrangler. Las pruebas utilizan un token ficticio y SQLite/D1 real en Miniflare, sin tocar Telegram ni la base de datos remota. Cubren firmas, caducidad, asociación de grupos, permisos, pedidos propios, cierre, fechas límite, aislamiento de grupos, restricciones e índices SQL, reintentos de publicación y migraciones de chat.
 
+## Despliegue automático desde GitHub
+
+El Worker `telegram-list-bot` está conectado a este repositorio mediante **Cloudflare Workers Builds**. Cada nuevo commit en `main` activa **Deploy main - telegram-list-bot**, con Node.js 24 y raíz `/`:
+
+- Build: `npm run typecheck && npm test && npm run build`.
+- Deploy: `npx wrangler deploy --keep-vars`.
+
+Las credenciales se gestionan dentro de Cloudflare y los secretos de ejecución se conservan en el Worker. No hay que volver a desplegar manualmente después de hacer push. Antes de dar por terminado un cambio, comprobar que el build del SHA publicado termina correctamente y que `/api/health` y los assets de producción responden. El procedimiento permanente para agentes está en `AGENTS.md`.
+
+Workers Builds incluye 3.000 minutos mensuales y un build concurrente en Free, compartidos por la cuenta; no se ha cambiado el plan ni activado facturación. Límites comprobados el 18 de octubre de 2026: https://developers.cloudflare.com/workers/ci-cd/builds/limits-and-pricing/.
+
 ## Instalación desde cero y despliegue con Wrangler
 
 1. Crea un bot en **@BotFather** con `/newbot`; conserva el token fuera del repositorio. No se necesitan `api_id` ni `api_hash` de una cuenta personal de Telegram.
