@@ -92,7 +92,7 @@ Si aún no existe el Worker, compila y despliega una primera vez con `npm run de
 npm run telegram:setup
 ```
 
-El script valida `getMe`, evita sustituir un webhook existente de otra URL, registra `secret_token`, limita las conexiones del webhook a una y configura el nombre **Listas** y el botón **Abrir**. No elimina actualizaciones pendientes. Después comprueba `getWebhookInfo` sin mostrar el token. La Main Mini App se configura manualmente en BotFather como se explica arriba.
+El script valida `getMe`, evita sustituir un webhook existente de otra URL, registra `secret_token`, limita las conexiones del webhook a una y configura el botón **Abrir**. El nombre del bot se gestiona manualmente en Telegram. No elimina actualizaciones pendientes. Después comprueba `getWebhookInfo` sin mostrar el token. La Main Mini App se configura manualmente en BotFather como se explica arriba.
 
 7. Configura BotFather, añade el bot al grupo y prueba el flujo con al menos dos usuarios. Revisa que nadie pueda cambiar el pedido de otro, que un no miembro no vea listas reenviadas y que cerrar bloquee las modificaciones.
 

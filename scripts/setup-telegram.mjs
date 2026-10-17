@@ -22,7 +22,6 @@ if(existing.url && existing.url!==`${appUrl}/telegram/webhook`)throw new Error('
 await call('setWebhook',{url:`${appUrl}/telegram/webhook`,secret_token:secret,allowed_updates:['my_chat_member','message'],max_connections:1});
 await call('setChatMenuButton',{menu_button:{type:'web_app',text:'Abrir',web_app:{url:appUrl}}});
 for (const language_code of ['', 'es']) {
-  await call('setMyName',{name:'Listas',language_code});
   await call('setMyCommands',{scope:{type:'all_group_chats'},language_code,commands:[{command:'listas',description:'Mostrar el acceso a las listas del grupo'}]});
 }
 await call('setMyDescription',{description:'Crea listas compartidas para tu grupo. Cada persona añade y modifica su pedido; todos pueden consultar la lista.',language_code:'es'});
