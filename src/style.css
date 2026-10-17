@@ -45,3 +45,9 @@ textarea {resize:vertical;}
 .orders-preview .order:last-child {max-height:5rem;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom,#000 20%,transparent 100%);mask-image:linear-gradient(to bottom,#000 20%,transparent 100%);}
 h1[tabindex="-1"]:focus {outline:none;}
 .close-confirmation .secondary {background:var(--app-bg);}
+
+/* The header stays outside the animated body; panel footers retain their flex layout. */
+body {overflow-x:hidden;}
+.screen-content {min-width:0;overflow-anchor:none;}
+.screen-panel {flex:1;min-height:0;display:flex;flex-direction:column;}
+.screen-content[inert] {pointer-events:none;}

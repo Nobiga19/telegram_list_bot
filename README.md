@@ -36,6 +36,12 @@ Cada consulta o modificación comprueba la pertenencia actual con `getChatMember
 
 La fijación es opcional y está desactivada. Para activarla, cambia `PIN_MESSAGES` a `"true"`, concede únicamente el permiso adicional para fijar mensajes y vuelve a desplegar. Un fallo de fijación no impide crear la lista.
 
+## Navegación y transiciones
+
+Las cuatro pantallas comparten una única sesión React. La cabecera permanece estable y el contenido usa una transición horizontal con fundido de 220 ms (90 ms de salida y 130 ms de entrada), invertida al volver. No se añaden iframes ni dependencias. La carga inicial y la actualización de pedidos no animan la pantalla.
+
+La navegación conserva los formularios al ir y volver, restaura el scroll de cada pantalla/lista y bloquea pulsaciones durante la transición. Abrir otra lista carga su pedido; volver a la misma mantiene el borrador. El foco pasa al título cuando termina la entrada. Si el dispositivo solicita movimiento reducido, el cambio es inmediato.
+
 ## Desarrollo
 
 Requisitos: Node.js 24, npm y una cuenta Cloudflare con Workers **Free**. Las versiones están fijadas en `package.json` y `package-lock.json`.
