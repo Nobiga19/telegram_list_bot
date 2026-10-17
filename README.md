@@ -16,11 +16,11 @@ El navegador convencional muestra instrucciones para abrir Telegram; no admite a
 1. Abre **@BotFather → /mybots → @ourizo_telegram_list_bot → Bot Settings → Configure Mini App → Enable Mini App** (los nombres pueden variar según el cliente).
 2. Introduce `https://telegram-list-bot.gabino-ro-dom.workers.dev` como URL de la **Main Mini App**. Si pide un título, utiliza **Listas del grupo**. Selecciona el modo compacto si ofrece esa opción. Los enlaces también incluyen `mode=compact`.
 3. Añade el bot al grupo mediante https://t.me/ourizo_telegram_list_bot?startgroup=true y hazlo administrador. No necesita borrar mensajes, bloquear usuarios, invitar miembros ni cambiar la información del grupo. Debe poder publicar mensajes.
-4. Pulsa **Crear lista** en el mensaje que publica el bot. Solo los administradores del grupo pueden crear listas. Introduce el título y pulsa **Crear lista**.
+4. Pulsa **Abrir** en el mensaje **📋 Listas** que publica el bot y selecciona **Crear lista** dentro de la aplicación. Solo los administradores del grupo pueden crear listas. Introduce el título y pulsa **Crear lista**.
 5. Cada miembro abre **Abrir lista**, escribe en **Mi pedido** y pulsa **Guardar cambios**. Todos ven los pedidos; cada uno solo modifica o elimina el suyo.
 6. El creador o un administrador puede cerrar la lista. El historial conserva las listas anteriores, incluidas las que siguen abiertas pero ya no son la principal.
 
-El grupo dispone de un teclado persistente con **📋 Listas**. Al pulsarlo, el bot publica **Abrir listas**, que abre la aplicación del grupo: son dos pulsaciones. Telegram permite teclados personalizados en grupos, pero los botones de tipo `web_app` del teclado y el menú nativo de Mini Apps son exclusivos de chats privados. El texto del botón se envía como mensaje al grupo; no abre por sí solo una web.
+El bot se llama **Listas**. El grupo dispone de un teclado persistente con **📋 Listas**. Al pulsarlo, el bot publica un mensaje compacto con el texto **📋 Listas** y el botón **Abrir**, que abre la aplicación del grupo: son dos pulsaciones. Telegram permite teclados personalizados en grupos, pero los botones de tipo `web_app` del teclado y el menú nativo de Mini Apps son exclusivos de chats privados. El texto del botón se envía como mensaje al grupo; no abre por sí solo una web.
 
 Para activar el teclado en un grupo existente, pulsa el icono **/** junto al campo de mensaje y selecciona **listas** del bot. También funciona `/listas@ourizo_telegram_list_bot`. El bot registra este comando en el menú de grupos; no hace falta escribirlo ni volver a buscar mensajes anteriores. El cliente puede ocultar el teclado: se recupera con su icono o desde ese menú.
 
@@ -92,7 +92,7 @@ Si aún no existe el Worker, compila y despliega una primera vez con `npm run de
 npm run telegram:setup
 ```
 
-El script valida `getMe`, evita sustituir un webhook existente de otra URL, registra `secret_token`, limita las conexiones del webhook a una y configura el botón **Abrir listas**. No elimina actualizaciones pendientes. Después comprueba `getWebhookInfo` sin mostrar el token. La Main Mini App se configura manualmente en BotFather como se explica arriba.
+El script valida `getMe`, evita sustituir un webhook existente de otra URL, registra `secret_token`, limita las conexiones del webhook a una y configura el nombre **Listas** y el botón **Abrir**. No elimina actualizaciones pendientes. Después comprueba `getWebhookInfo` sin mostrar el token. La Main Mini App se configura manualmente en BotFather como se explica arriba.
 
 7. Configura BotFather, añade el bot al grupo y prueba el flujo con al menos dos usuarios. Revisa que nadie pueda cambiar el pedido de otro, que un no miembro no vea listas reenviadas y que cerrar bloquee las modificaciones.
 

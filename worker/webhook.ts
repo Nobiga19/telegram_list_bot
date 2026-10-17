@@ -25,7 +25,7 @@ export function isListsRequest(text: string, botUsername: string): boolean {
 async function sendGroupKeyboard(env: Env, chatId: string) {
   await telegram(env, 'sendMessage', {
     chat_id: chatId,
-    text: 'Usa «📋 Listas» en el teclado para recuperar el acceso cuando quieras.',
+    text: '📋 Listas',
     disable_notification: true,
     reply_markup: groupKeyboard,
   });
@@ -53,8 +53,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     if (['member','administrator'].includes(event.new_chat_member.status) &&
       (!previous || event.old_chat_member.status !== event.new_chat_member.status)) {
       await telegram<TelegramMessage>(env, 'sendMessage', { chat_id: chatId,
-        text: admin ? 'Listas del grupo\nCrea una lista y comparte los pedidos aquí.' : 'Para proteger las listas, haz administrador al bot. No necesita borrar mensajes ni gestionar miembros.',
-        reply_markup: { inline_keyboard: [[{ text: 'Crear lista', url: launchLink(env, `g_${canonical.id}`) }]] },
+        text: admin ? '📋 Listas' : 'Para proteger las listas, haz administrador al bot. No necesita borrar mensajes ni gestionar miembros.',
+        reply_markup: { inline_keyboard: [[{ text: 'Abrir', url: launchLink(env, `g_${canonical.id}`) }]] },
       });
       if (admin) await sendGroupKeyboard(env,chatId);
     }
@@ -95,17 +95,17 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
       if (message.text.trim() !== '📋 Listas') await sendGroupKeyboard(env,chatId);
       await telegram(env,'sendMessage',{
         chat_id:chatId,
-        text:'Listas del grupo\nAbre la lista principal, crea una nueva o consulta el historial.',
-        reply_markup:{inline_keyboard:[[{text:'Abrir listas',url:launchLink(env,`g_${group.id}`)}]]},
+        text:'📋 Listas',
+        reply_markup:{inline_keyboard:[[{text:'Abrir',url:launchLink(env,`g_${group.id}`)}]]},
       });
     }
   }
   if (message?.chat.type === 'private' && message.text?.startsWith('/start')) {
     await telegram(env, 'sendMessage', {
       chat_id: message.chat.id,
-      text: 'Añade el bot a tu grupo y hazlo administrador. Después pulsa «Crear lista» en el mensaje del grupo.',
+      text: 'Añade el bot a tu grupo y hazlo administrador. Después pulsa «Abrir» en el mensaje del grupo.',
       reply_markup: { inline_keyboard: [[{ text: 'Añadir a un grupo', url: `https://t.me/${env.BOT_USERNAME}?startgroup=true` }],
-        [{ text: 'Abrir aplicación', web_app: { url: env.APP_URL } }]] },
+        [{ text: 'Abrir', web_app: { url: env.APP_URL } }]] },
     });
   }
   return Response.json({ ok: true });
