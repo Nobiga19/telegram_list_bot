@@ -13,7 +13,7 @@
 - Los commits nuevos en `main` activan automáticamente el trigger **Deploy main - telegram-list-bot** de Workers Builds. No hace falta crear una rama `main` nueva.
 - Raíz: `/`. Node.js: `24`. Cloudflare instala las dependencias del lockfile.
 - Build: `npm run typecheck && npm test && npm run build`.
-- Deploy: `npx wrangler deploy --keep-vars`.
+- Deploy: `npx wrangler deploy --keep-vars && node scripts/verify-deployment.mjs`.
 - Los secretos de ejecución ya están configurados en el Worker. No introducirlos como variables de compilación ni recrearlos.
 - Publicar los cambios autorizados mediante GitHub; después esperar el build correspondiente al SHA publicado. No lanzar otro despliegue manual mientras el automático esté pendiente o ejecutándose.
 - Consultar los triggers del Worker por API si es necesario; el trigger configurado es `3a574b60-bc82-409c-8f81-7df6bc210dc9`. Usar la credencial de build registrada en Cloudflare sin leer ni exportar su valor.
