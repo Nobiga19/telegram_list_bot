@@ -11,7 +11,7 @@
 ## Despliegue habitual: GitHub → Cloudflare Workers Builds
 
 - El trigger **Deploy main - telegram-list-bot** de Workers Builds está configurado para nuevos commits en `main`. No hace falta crear una rama `main` nueva.
-- Estado verificado el 18-10-2026: build, despliegue, salud y coincidencia de assets funcionan mediante el trigger de Cloudflare. La recepción automática del evento push aún no está comprobada: los commits hechos por la API de GitHub en esta sesión no generaron un build observable. Revisar el acceso del repositorio en la aplicación GitHub **Cloudflare Workers and Pages** (GitHub pide reautenticación). No afirmar que el push automático funciona hasta observar un build con origen push.
+- La aplicación GitHub **Cloudflare Workers and Pages** tiene acceso explícito a `Nobiga19/telegram_list_bot`. Mantener este repositorio incluido en la selección de la aplicación para que Cloudflare reciba los eventos push.
 - Raíz: `/`. Node.js: `24`. Cloudflare instala las dependencias del lockfile.
 - Build: `npm run typecheck && npm test && npm run build`.
 - Deploy: `npx wrangler deploy --keep-vars && node scripts/verify-deployment.mjs`.
