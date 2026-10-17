@@ -158,8 +158,8 @@ function App() {
 
   return <main className="mx-auto max-w-lg px-4 py-3">
     <header className="mb-3 flex items-center justify-between gap-3">
-      <div className="min-w-0"><p className="eyebrow">LISTAS DEL GRUPO</p><p className="truncate text-sm muted">{session?.group?.title ?? 'Pedidos compartidos'}</p></div>
-      {session?.group && <button className="text-button shrink-0" disabled={busy} onClick={()=>{polling.current?.abort();void loadHistory(session);}}>Historial de listas</button>}
+      <div className="flex min-w-0 items-center gap-2.5"><img src="/bot-icon.jpg" alt="Listas" width={40} height={40} className="bot-avatar"/><p className="truncate text-sm muted">{session?.group?.title ?? 'Pedidos compartidos'}</p></div>
+      {session?.group && <button className="button secondary shrink-0" disabled={busy} onClick={()=>{polling.current?.abort();void loadHistory(session);}}>Historial de listas</button>}
     </header>
     {error && <div role="alert" className="message error">{error}</div>}
     {notice && <div role="status" className="message">{notice}</div>}
@@ -178,7 +178,7 @@ function App() {
       <p className="text-xs muted">Se publicará un botón en el grupo. La fecha límite utiliza la hora de tu dispositivo.</p>
     </form>}
     {session?.group && screen==='history' && <section>
-      <div className="mb-2 flex items-center justify-between"><h1 className="text-lg font-semibold">Historial de listas</h1>{session.admin && <button className="text-button" disabled={busy} onClick={()=>{setScreen('create');setError('');setNotice('');}}>Crear lista</button>}</div>
+      <div className="mb-2 flex items-center justify-between"><h1 className="text-lg font-semibold">Historial de listas</h1>{session.admin && <button className="button secondary" disabled={busy} onClick={()=>{setScreen('create');setError('');setNotice('');}}>Crear lista</button>}</div>
       {!history.lists.length && <p className="py-4 muted">Todavía no hay listas en este grupo.</p>}
       {history.lists.map(list=><button disabled={busy} onClick={()=>{void openList(list.id);}} key={list.id} className="history-row w-full text-left">
         <span className="font-medium">{list.title}</span><span className="block text-xs muted">{list.status==='closed' ? 'Lista cerrada':list.is_primary ? 'Lista abierta · Principal':'Lista abierta'} · {date(list.created_at)}</span>
@@ -188,9 +188,11 @@ function App() {
     {screen==='list' && snapshot && <>
       <section className="mb-2">
         <h1 className="text-xl font-semibold break-words">{snapshot.list.title}</h1>
-        <p className={`status text-xs ${snapshot.list.writable ? 'open':''}`}>{snapshot.list.writable ? 'Lista abierta':'Lista cerrada'}</p>
         {snapshot.list.description && <p className="mt-2 whitespace-pre-wrap text-sm">{snapshot.list.description}</p>}
-        {snapshot.list.deadline && <p className="mt-1 text-xs muted">Fecha límite: {date(snapshot.list.deadline)}</p>}
+        <div className="list-meta mt-1 text-xs">
+          {snapshot.list.deadline && <p className="muted">Fecha límite: {date(snapshot.list.deadline)}</p>}
+          <p className={`status ${snapshot.list.writable ? 'open':''}`}>{snapshot.list.writable ? 'Lista abierta':'Lista cerrada'}</p>
+        </div>
       </section>
       <section ref={orderSection} tabIndex={-1} aria-label="Pedidos" className="orders mb-3">
         {!snapshot.orders.length && <p className="py-3 text-sm muted">No hay pedidos todavía</p>}
@@ -200,19 +202,23 @@ function App() {
         </article>)}
       </section>
       {snapshot.list.writable && <form onSubmit={event=>{event.preventDefault();void mutate(`/api/lists/${snapshot.list.id}/my-order`,'PUT',{content},'Pedido guardado');}}>
-        <label className="font-semibold">Mi pedido<textarea value={content} rows={2} maxLength={1000} required placeholder="¿Qué te apetece?" onChange={event=>{setContent(event.target.value);dirtyRef.current=true;setDirty(true);}}/></label>
-        <button className="button primary mt-2 w-full" disabled={busy || !content.trim() || !dirty} type="submit">{busy ? 'Guardando…':'Guardar cambios'}</button>
-        {snapshot.orders.some(order=>order.telegram_user_id===String(session?.user.id)) && <button className="text-button danger mt-2" type="button" disabled={busy} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/my-order`,'DELETE',undefined,'Pedido eliminado');}}>Eliminar mi pedido</button>}
+        <label><span className="order-label">Mi pedido:</span><textarea value={content} rows={2} maxLength={1000} required placeholder="¿Qué te apetece?" onChange={event=>{setContent(event.target.value);dirtyRef.current=true;setDirty(true);}}/></label>
+        <div className="action-row mt-2">
+          <button className="button primary" disabled={busy || !content.trim() || !dirty} type="submit">{busy ? 'Guardando…':'Guardar cambios'}</button>
+          {snapshot.orders.some(order=>order.telegram_user_id===String(session?.user.id)) && <button className="button destructive" type="button" disabled={busy} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/my-order`,'DELETE',undefined,'Pedido eliminado');}}>Eliminar mi pedido</button>}
+        </div>
       </form>}
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="action-row mt-3">
         <button className="button secondary flex-1" onClick={()=>{orderSection.current?.scrollIntoView({behavior:'smooth',block:'start'});orderSection.current?.focus();}}>Ver pedidos</button>
         {snapshot.list.can_close && <button className="button secondary flex-1" disabled={busy} onClick={()=>setConfirmClose(true)}>Cerrar lista</button>}
       </div>
       {confirmClose && <div className="message mt-2" role="group" aria-label="Confirmar cierre"><p className="text-sm">Los pedidos quedarán en modo de solo lectura.</p><div className="mt-2 flex gap-3"><button className="text-button danger" disabled={busy} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/close`,'POST',undefined,'Lista cerrada');}}>Confirmar cierre</button><button className="text-button" onClick={()=>setConfirmClose(false)}>Cancelar</button></div></div>}
-      <button className="text-button mt-3" onClick={()=>{void copySummary();}}>Copiar resumen</button>
+      <div className="action-row secondary-actions mt-3">
+        <button className="button secondary" onClick={()=>{void copySummary();}}>Copiar resumen</button>
+        {session?.admin && <button className="button secondary" disabled={busy} onClick={()=>{setScreen('create');setError('');setNotice('');}}>Crear lista</button>}
+      </div>
       {summary && <textarea className="mt-2" aria-label="Resumen para copiar" readOnly rows={5} value={summary} onFocus={event=>event.target.select()}/>}
       {session?.admin && snapshot.list.publish_state!=='sent' && snapshot.list.writable && <button className="text-button mt-2 block" disabled={busy} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/publish`,'POST',undefined,'Publicación revisada');}}>Publicar en el grupo</button>}
-      {session?.admin && <button className="text-button mt-3 block" disabled={busy} onClick={()=>{setScreen('create');setError('');setNotice('');}}>Crear lista</button>}
     </>}
   </main>;
 }
