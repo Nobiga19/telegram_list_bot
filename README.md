@@ -20,7 +20,11 @@ El navegador convencional muestra instrucciones para abrir Telegram; no admite a
 5. Cada miembro abre **Abrir lista**, escribe en **Mi pedido** y pulsa **Guardar cambios**. Todos ven los pedidos; cada uno solo modifica o elimina el suyo.
 6. El creador o un administrador puede cerrar la lista. El historial conserva las listas anteriores, incluidas las que siguen abiertas pero ya no son la principal.
 
-No es necesario escribir comandos para usar las listas. El botón nativo **Iniciar** de Telegram puede enviar `/start` automáticamente en privado y muestra botones gráficos. No hace falta desactivar el modo de privacidad en BotFather. Si el bot ya estaba en el grupo antes de activar el webhook, cambiarlo de miembro a administrador genera el evento de registro; si ya era administrador, quita y vuelve a conceder ese rol.
+El grupo dispone de un teclado persistente con **📋 Listas**. Al pulsarlo, el bot publica **Abrir listas**, que abre la aplicación del grupo: son dos pulsaciones. Telegram permite teclados personalizados en grupos, pero los botones de tipo `web_app` del teclado y el menú nativo de Mini Apps son exclusivos de chats privados. El texto del botón se envía como mensaje al grupo; no abre por sí solo una web.
+
+Para activar el teclado en un grupo existente, pulsa el icono **/** junto al campo de mensaje y selecciona **listas** del bot. También funciona `/listas@ourizo_telegram_list_bot`. El bot registra este comando en el menú de grupos; no hace falta escribirlo ni volver a buscar mensajes anteriores. El cliente puede ocultar el teclado: se recupera con su icono o desde ese menú.
+
+El botón nativo **Iniciar** de Telegram puede enviar `/start` automáticamente en privado y muestra botones gráficos. No hace falta desactivar el modo de privacidad en BotFather. Si el bot ya estaba en el grupo antes de activar el webhook, el acceso **listas** permite recuperar el registro del grupo a partir del evento autenticado de Telegram.
 
 ## Asociación segura con grupos
 

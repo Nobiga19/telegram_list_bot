@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { createHmac } from 'node:crypto';
 import app from '../worker/index';
 import { authenticate } from '../worker/auth';
+import { isListsRequest } from '../worker/webhook';
 
 const TOKEN='123456:test-token-only';
 const groupA='a0000000-0000-4000-8000-000000000001';
@@ -157,7 +158,7 @@ describe('Webhook group association',()=>{
     expect((await webhook(update)).status).toBe(200);
     const group=await env.DB.prepare('SELECT * FROM groups WHERE telegram_chat_id=?').bind('-789').first<{id:string;bot_is_admin:number}>();
     expect(group?.id).toMatch(/^[0-9a-f-]{36}$/);expect(group?.bot_is_admin).toBe(1);
-    await webhook(update);expect(calls.filter(x=>x.method==='sendMessage')).toHaveLength(1);
+    await webhook(update);expect(calls.filter(x=>x.method==='sendMessage')).toHaveLength(2);
   });
   it('accepts reset update IDs after inactivity and rejects older membership events',async()=>{
     const event={date:1000,chat:{id:-789,type:'group',title:'Cena'},old_chat_member:{status:'member'},new_chat_member:{status:'administrator'}};
@@ -173,5 +174,23 @@ describe('Webhook group association',()=>{
     expect(await env.DB.prepare('SELECT telegram_chat_id FROM groups WHERE id=?').bind(groupA).first('telegram_chat_id')).toBe('-100999');
     expect(await env.DB.prepare('SELECT group_id FROM lists WHERE id=?').bind(listId).first('group_id')).toBe(groupA);
     await webhook(migration); // Duplicate migrations are harmless.
+  });
+  it('provides the persistent group keyboard and a group-scoped launch link from the command menu',async()=>{
+    expect((await webhook({update_id:200,message:{chat:{id:-100123,type:'supergroup'},text:'/listas'}})).status).toBe(200);
+    const sent=calls.filter(x=>x.method==='sendMessage');
+    expect(sent).toHaveLength(2);
+    expect(sent[0].data.reply_markup).toMatchObject({keyboard:[[{text:'📋 Listas'}]],is_persistent:true,one_time_keyboard:false});
+    expect(JSON.stringify(sent[1].data.reply_markup)).toContain(`startapp=g_${groupA}`);
+    calls=[];
+    await webhook({update_id:201,message:{chat:{id:-100123,type:'supergroup'},text:'📋 Listas'}});
+    expect(calls.filter(x=>x.method==='sendMessage')).toHaveLength(1);
+  });
+  it('ignores commands addressed to other bots, bot messages and unrelated group text',async()=>{
+    expect(isListsRequest('/listas@another_bot',env.BOT_USERNAME)).toBe(false);
+    expect(isListsRequest(`/listas@${env.BOT_USERNAME}`,env.BOT_USERNAME)).toBe(true);
+    for(const message of [{text:'/listas@another_bot'},{text:'hola'},{text:'📋 Listas',from:{is_bot:true}}]) {
+      await webhook({update_id:202,message:{chat:{id:-100123,type:'supergroup'},...message}});
+    }
+    expect(calls.filter(x=>x.method==='sendMessage')).toHaveLength(0);
   });
 });

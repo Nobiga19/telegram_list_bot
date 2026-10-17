@@ -1,12 +1,34 @@
 import { AppError, equalSecret } from './auth';
-import { telegram, launchLink, type TelegramMessage } from './telegram';
+import { telegram, launchLink, type TelegramMessage, type ChatMember } from './telegram';
 import type { Group } from './model';
 
 interface Chat { id: number; type: string; title?: string }
 interface Update {
   update_id: number;
   my_chat_member?: { date: number; chat: Chat; old_chat_member: { status: string }; new_chat_member: { status: string } };
-  message?: { chat: Chat; text?: string; migrate_to_chat_id?: number; migrate_from_chat_id?: number };
+  message?: { chat: Chat; text?: string; from?: { is_bot?: boolean }; migrate_to_chat_id?: number; migrate_from_chat_id?: number };
+}
+
+const groupKeyboard = {
+  keyboard: [[{ text: '📋 Listas' }]],
+  resize_keyboard: true,
+  is_persistent: true,
+  one_time_keyboard: false,
+};
+
+export function isListsRequest(text: string, botUsername: string): boolean {
+  if (text.trim() === '📋 Listas') return true;
+  const command = /^\/listas(?:@([a-zA-Z0-9_]+))?(?:\s|$)/i.exec(text.trim());
+  return !!command && (!command[1] || command[1].toLowerCase() === botUsername.toLowerCase());
+}
+
+async function sendGroupKeyboard(env: Env, chatId: string) {
+  await telegram(env, 'sendMessage', {
+    chat_id: chatId,
+    text: 'Usa «📋 Listas» en el teclado para recuperar el acceso cuando quieras.',
+    disable_notification: true,
+    reply_markup: groupKeyboard,
+  });
 }
 
 export async function handleWebhook(request: Request, env: Env): Promise<Response> {
@@ -34,6 +56,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
         text: admin ? 'Listas del grupo\nCrea una lista y comparte los pedidos aquí.' : 'Para proteger las listas, haz administrador al bot. No necesita borrar mensajes ni gestionar miembros.',
         reply_markup: { inline_keyboard: [[{ text: 'Crear lista', url: launchLink(env, `g_${canonical.id}`) }]] },
       });
+      if (admin) await sendGroupKeyboard(env,chatId);
     }
     await env.DB.prepare('UPDATE groups SET last_announced_update_id=?,last_announced_event_date=? WHERE id=? AND last_update_id=? AND last_event_date=?')
       .bind(update.update_id,event.date,canonical.id,update.update_id,event.date).run();
@@ -57,6 +80,24 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
           .bind(newId,message.chat.title ?? oldGroup.title,newGroup?.bot_is_admin ?? oldGroup.bot_is_admin,oldGroup.id));
         await env.DB.batch(statements);
       }
+    }
+    if (!message.from?.is_bot && message.text && isListsRequest(message.text,env.BOT_USERNAME)) {
+      const chatId=String(message.chat.id);
+      let group=await env.DB.prepare('SELECT * FROM groups WHERE telegram_chat_id=?').bind(chatId).first<Group>();
+      if (!group) {
+        // Recover groups that predate webhook registration, using only Telegram's authenticated chat.
+        const bot=await telegram<ChatMember>(env,'getChatMember',{chat_id:chatId,user_id:Number(env.BOT_TOKEN.split(':')[0])});
+        await env.DB.prepare(`INSERT INTO groups(id,telegram_chat_id,title,bot_is_admin) VALUES(?,?,?,?) ON CONFLICT(telegram_chat_id) DO NOTHING`)
+          .bind(crypto.randomUUID(),chatId,message.chat.title ?? 'Grupo',bot.status==='administrator'?1:0).run();
+        group=await env.DB.prepare('SELECT * FROM groups WHERE telegram_chat_id=?').bind(chatId).first<Group>();
+      }
+      if (!group) throw new AppError(503,'No se ha podido recuperar el grupo.');
+      if (message.text.trim() !== '📋 Listas') await sendGroupKeyboard(env,chatId);
+      await telegram(env,'sendMessage',{
+        chat_id:chatId,
+        text:'Listas del grupo\nAbre la lista principal, crea una nueva o consulta el historial.',
+        reply_markup:{inline_keyboard:[[{text:'Abrir listas',url:launchLink(env,`g_${group.id}`)}]]},
+      });
     }
   }
   if (message?.chat.type === 'private' && message.text?.startsWith('/start')) {
