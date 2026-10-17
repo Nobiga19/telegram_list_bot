@@ -9,6 +9,9 @@ interface Update {
   message?: { chat: Chat; text?: string; from?: { is_bot?: boolean }; migrate_to_chat_id?: number; migrate_from_chat_id?: number };
 }
 
+// Invisible separator keeps the launch message text-free while satisfying Telegram's non-empty text requirement.
+const launchMessageText = '\u2063';
+
 const groupKeyboard = {
   keyboard: [[{ text: '📋 Listas' }]],
   resize_keyboard: true,
@@ -53,7 +56,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     if (['member','administrator'].includes(event.new_chat_member.status) &&
       (!previous || event.old_chat_member.status !== event.new_chat_member.status)) {
       await telegram<TelegramMessage>(env, 'sendMessage', { chat_id: chatId,
-        text: admin ? '📋 Listas' : 'Para proteger las listas, haz administrador al bot. No necesita borrar mensajes ni gestionar miembros.',
+        text: admin ? launchMessageText : 'Para proteger las listas, haz administrador al bot. No necesita borrar mensajes ni gestionar miembros.',
         reply_markup: { inline_keyboard: [[{ text: 'Abrir', url: launchLink(env, `g_${canonical.id}`) }]] },
       });
       if (admin) await sendGroupKeyboard(env,chatId);
@@ -95,7 +98,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
       if (message.text.trim() !== '📋 Listas') await sendGroupKeyboard(env,chatId);
       await telegram(env,'sendMessage',{
         chat_id:chatId,
-        text:'📋 Listas',
+        text:launchMessageText,
         reply_markup:{inline_keyboard:[[{text:'Abrir',url:launchLink(env,`g_${group.id}`)}]]},
       });
     }

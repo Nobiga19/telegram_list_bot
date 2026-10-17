@@ -180,10 +180,12 @@ describe('Webhook group association',()=>{
     const sent=calls.filter(x=>x.method==='sendMessage');
     expect(sent).toHaveLength(2);
     expect(sent[0].data.reply_markup).toMatchObject({keyboard:[[{text:'📋 Listas'}]],is_persistent:true,one_time_keyboard:false});
+    expect(sent[1].data.text).toBe('\u2063');
     expect(JSON.stringify(sent[1].data.reply_markup)).toContain(`startapp=g_${groupA}`);
     calls=[];
     await webhook({update_id:201,message:{chat:{id:-100123,type:'supergroup'},text:'📋 Listas'}});
     expect(calls.filter(x=>x.method==='sendMessage')).toHaveLength(1);
+    expect(calls.find(x=>x.method==='sendMessage')?.data.text).toBe('\u2063');
   });
   it('ignores commands addressed to other bots, bot messages and unrelated group text',async()=>{
     expect(isListsRequest('/listas@another_bot',env.BOT_USERNAME)).toBe(false);
