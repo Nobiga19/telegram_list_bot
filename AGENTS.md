@@ -25,13 +25,21 @@
 ## Validación y comportamiento que se debe preservar
 
 - Ejecutar TypeScript, las pruebas relevantes y el build; para UI, comprobar móvil y temas Telegram claro/oscuro. Indicar cualquier comprobación real que no se haya podido realizar.
-- Validar `initData` y pertenencia al grupo en el servidor; cada usuario solo puede modificar su pedido. Las listas cerradas o caducadas rechazan cambios en el servidor.
-- Conservar listas, pedidos, enlaces de grupo y borradores al navegar entre lista y pedidos completos.
+- Validar `initData` y pertenencia al grupo en el servidor; cada usuario solo puede modificar su aportación. Las listas cerradas o caducadas rechazan cambios en el servidor.
+- Conservar listas, aportaciones, enlaces de grupo y borradores al navegar entre lista y aportaciones completos.
 - Historial: recientes primero, scroll interno, sin botón de historial duplicado y botón Crear lista de ancho completo abajo.
-- Vista previa: hasta tres pedidos; fundido del tercero y Ver pedidos solo cuando haya más de tres. Pedidos completos en pantalla separada con separadores y Volver a la lista abajo.
+- Vista previa: hasta tres aportaciones; fundido del tercero y Ver aportaciones solo cuando haya más de tres. Pedidos completos en pantalla separada con separadores y Volver a la lista abajo.
 - Cierre rojo con confirmación. Icono circular y UI compacta en español. Mensajes genéricos de apertura con texto invisible y botón Abrir.
 - Transiciones: 220 ms, dirección inversa al volver, cabecera estable, scroll restaurado y respeto a movimiento reducido; las actualizaciones de datos no deben reanimar la pantalla.
 
 ## Comunicación
 
 Responder brevemente en español con el resultado, la validación y las limitaciones relevantes. Respetar las decisiones tomadas y distinguir hechos verificados de suposiciones.
+
+
+## Listas generales y eliminación
+
+- Mantener textos y ejemplos neutrales, sin referencias a comida o pedidos. Usar «aportaciones». Conservar los identificadores internos y rutas existentes para compatibilidad.
+- Solo los administradores actuales de Telegram pueden eliminar listas abiertas, cerradas o caducadas; comprobarlo en el servidor. Botón rojo con confirmación explícita.
+- Eliminar las aportaciones y ocultar la lista de todas las lecturas. Conservar únicamente la referencia de lanzamiento y metadatos mínimos para que los enlaces firmados existentes permitan volver al historial del grupo, sin recuperar el contenido eliminado.
+- Aplicar migraciones D1 pendientes antes de desplegar código que las requiera.

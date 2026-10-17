@@ -24,7 +24,7 @@ await call('setChatMenuButton',{menu_button:{type:'web_app',text:'Abrir',web_app
 for (const language_code of ['', 'es']) {
   await call('setMyCommands',{scope:{type:'all_group_chats'},language_code,commands:[{command:'listas',description:'Mostrar el acceso a las listas del grupo'}]});
 }
-await call('setMyDescription',{description:'Crea listas compartidas para tu grupo. Cada persona añade y modifica su pedido; todos pueden consultar la lista.',language_code:'es'});
-await call('setMyShortDescription',{short_description:'Listas y pedidos compartidos para tu grupo.',language_code:'es'});
+await call('setMyDescription',{description:'Crea listas compartidas para tu grupo. Cada persona añade y modifica su aportación; todos pueden consultar la lista.',language_code:'es'});
+await call('setMyShortDescription',{short_description:'Listas compartidas para tu grupo.',language_code:'es'});
 const info=await call('getWebhookInfo');
 console.log(JSON.stringify({bot_username:bot.username,webhook_url:info.url,pending_updates:info.pending_update_count,webhook_error:info.last_error_message ?? null},null,2));

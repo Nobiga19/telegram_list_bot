@@ -1,6 +1,6 @@
 # Listas del grupo · Telegram
 
-Mini App compacta en español (España) para compartir pedidos dentro de grupos de Telegram. React, TypeScript, Vite y Tailwind en el frontend; Hono en un Cloudflare Worker con Static Assets y D1. No utiliza Pages ni servicios de pago.
+Mini App compacta en español (España) para compartir aportaciones dentro de grupos de Telegram. React, TypeScript, Vite y Tailwind en el frontend; Hono en un Cloudflare Worker con Static Assets y D1. No utiliza Pages ni servicios de pago.
 
 ## Aplicación y bot
 
@@ -17,7 +17,7 @@ El navegador convencional muestra instrucciones para abrir Telegram; no admite a
 2. Introduce `https://telegram-list-bot.gabino-ro-dom.workers.dev` como URL de la **Main Mini App**. Si pide un título, utiliza **Listas del grupo**. Selecciona el modo compacto si ofrece esa opción. Los enlaces también incluyen `mode=compact`.
 3. Añade el bot al grupo mediante https://t.me/ourizo_telegram_list_bot?startgroup=true y hazlo administrador. No necesita borrar mensajes, bloquear usuarios, invitar miembros ni cambiar la información del grupo. Debe poder publicar mensajes.
 4. Pulsa **Abrir** en el mensaje **📋 Listas** que publica el bot y selecciona **Crear lista** dentro de la aplicación. Solo los administradores del grupo pueden crear listas. Introduce el título y pulsa **Crear lista**.
-5. Cada miembro abre **Abrir lista**, escribe en **Mi pedido** y pulsa **Guardar cambios**. Todos ven los pedidos; cada uno solo modifica o elimina el suyo.
+5. Cada miembro abre **Abrir lista**, escribe en **Mi aportación** y pulsa **Guardar cambios**. Todos ven los aportaciones; cada uno solo modifica o elimina el suyo.
 6. El creador o un administrador puede cerrar la lista. El historial conserva las listas anteriores, incluidas las que siguen abiertas pero ya no son la principal.
 
 El bot se llama **Listas**. El grupo dispone de un teclado persistente con **📋 Listas**. Al pulsarlo, el bot publica un mensaje compacto con el texto **📋 Listas** y el botón **Abrir**, que abre la aplicación del grupo: son dos pulsaciones. Telegram permite teclados personalizados en grupos, pero los botones de tipo `web_app` del teclado y el menú nativo de Mini Apps son exclusivos de chats privados. El texto del botón se envía como mensaje al grupo; no abre por sí solo una web.
@@ -32,15 +32,15 @@ Los enlaces directos de Mini Apps reciben `chat_instance`, que **no es el `chat_
 
 El webhook autenticado registra el ID real del grupo cuando Telegram envía `my_chat_member`. Genera un UUID aleatorio para el grupo y publica un enlace `startapp=g_<uuid>`. Cada lista tiene otro UUID y se publica como `startapp=l_<uuid>`. El servidor obtiene el contexto de `start_param` dentro del `initData` firmado; ignora `initDataUnsafe` y los parámetros de URL para autorizar.
 
-Cada consulta o modificación comprueba la pertenencia actual con `getChatMember`. Telegram solo garantiza esa consulta para otros usuarios cuando el bot es administrador: este es el motivo concreto de exigir ese rol. Un enlace reenviado a alguien ajeno al grupo no concede acceso. Las migraciones de grupo a supergrupo conservan los pedidos y el identificador original del grupo.
+Cada consulta o modificación comprueba la pertenencia actual con `getChatMember`. Telegram solo garantiza esa consulta para otros usuarios cuando el bot es administrador: este es el motivo concreto de exigir ese rol. Un enlace reenviado a alguien ajeno al grupo no concede acceso. Las migraciones de grupo a supergrupo conservan los aportaciones y el identificador original del grupo.
 
 La fijación es opcional y está desactivada. Para activarla, cambia `PIN_MESSAGES` a `"true"`, concede únicamente el permiso adicional para fijar mensajes y vuelve a desplegar. Un fallo de fijación no impide crear la lista.
 
 ## Navegación y transiciones
 
-Las cuatro pantallas comparten una única sesión React. La cabecera permanece estable y el contenido usa una transición horizontal con fundido de 220 ms (90 ms de salida y 130 ms de entrada), invertida al volver. No se añaden iframes ni dependencias. La carga inicial y la actualización de pedidos no animan la pantalla.
+Las cuatro pantallas comparten una única sesión React. La cabecera permanece estable y el contenido usa una transición horizontal con fundido de 220 ms (90 ms de salida y 130 ms de entrada), invertida al volver. No se añaden iframes ni dependencias. La carga inicial y la actualización de aportaciones no animan la pantalla.
 
-La navegación conserva los formularios al ir y volver, restaura el scroll de cada pantalla/lista y bloquea pulsaciones durante la transición. Abrir otra lista carga su pedido; volver a la misma mantiene el borrador. El foco pasa al título cuando termina la entrada. Si el dispositivo solicita movimiento reducido, el cambio es inmediato.
+La navegación conserva los formularios al ir y volver, restaura el scroll de cada pantalla/lista y bloquea pulsaciones durante la transición. Abrir otra lista carga su aportación; volver a la misma mantiene el borrador. El foco pasa al título cuando termina la entrada. Si el dispositivo solicita movimiento reducido, el cambio es inmediato.
 
 ## Desarrollo
 
@@ -66,7 +66,7 @@ npm test
 npm run build
 ```
 
-Los tipos de bindings/runtime se generan con Wrangler. Las pruebas utilizan un token ficticio y SQLite/D1 real en Miniflare, sin tocar Telegram ni la base de datos remota. Cubren firmas, caducidad, asociación de grupos, permisos, pedidos propios, cierre, fechas límite, aislamiento de grupos, restricciones e índices SQL, reintentos de publicación y migraciones de chat.
+Los tipos de bindings/runtime se generan con Wrangler. Las pruebas utilizan un token ficticio y SQLite/D1 real en Miniflare, sin tocar Telegram ni la base de datos remota. Cubren firmas, caducidad, asociación de grupos, permisos, aportaciones propios, cierre, fechas límite, aislamiento de grupos, restricciones e índices SQL, reintentos de publicación y migraciones de chat.
 
 ## Despliegue automático desde GitHub
 
@@ -111,7 +111,7 @@ npm run telegram:setup
 
 El script valida `getMe`, evita sustituir un webhook existente de otra URL, registra `secret_token`, limita las conexiones del webhook a una y configura el botón **Abrir**. El nombre del bot se gestiona manualmente en Telegram. No elimina actualizaciones pendientes. Después comprueba `getWebhookInfo` sin mostrar el token. La Main Mini App se configura manualmente en BotFather como se explica arriba.
 
-7. Configura BotFather, añade el bot al grupo y prueba el flujo con al menos dos usuarios. Revisa que nadie pueda cambiar el pedido de otro, que un no miembro no vea listas reenviadas y que cerrar bloquee las modificaciones.
+7. Configura BotFather, añade el bot al grupo y prueba el flujo con al menos dos usuarios. Revisa que nadie pueda cambiar el aportación de otro, que un no miembro no vea listas reenviadas y que cerrar bloquee las modificaciones.
 
 ## API
 
@@ -120,11 +120,11 @@ Todas las rutas protegidas exigen `Authorization: tma <Telegram.WebApp.initData>
 | Método | Ruta | Acción |
 |---|---|---|
 | GET | `/api/session` | Usuario verificado y contexto firmado del grupo |
-| GET | `/api/lists/:id` | Lista, permisos y pedidos |
+| GET | `/api/lists/:id` | Lista, permisos y aportaciones |
 | GET | `/api/lists/:id/orders` | Instantánea coherente para actualización |
 | POST | `/api/lists` | Crear lista y publicar el botón; requiere administrador |
-| PUT | `/api/lists/:id/my-order` | Crear o modificar el pedido del usuario autenticado |
-| DELETE | `/api/lists/:id/my-order` | Eliminar el pedido del usuario autenticado |
+| PUT | `/api/lists/:id/my-order` | Crear o modificar el aportación del usuario autenticado |
+| DELETE | `/api/lists/:id/my-order` | Eliminar el aportación del usuario autenticado |
 | POST | `/api/lists/:id/close` | Cerrar como creador o administrador |
 | GET | `/api/groups/:id/lists` | Historial paginado, 50 listas por página |
 | POST | `/api/lists/:id/publish` | Reintentar publicación como administrador |
@@ -134,13 +134,13 @@ Todas las rutas protegidas exigen `Authorization: tma <Telegram.WebApp.initData>
 
 ## Límites y comportamiento ante fallos
 
-- Un pedido por persona y lista, hasta 500 pedidos por lista, título de 100 caracteres, descripción de 500 y pedido de 1000. Las respuestas son acotadas y las consultas usan índices.
+- Un aportación por persona y lista, hasta 500 aportaciones por lista, título de 100 caracteres, descripción de 500 y aportación de 1000. Las respuestas son acotadas y las consultas usan índices.
 - Sesiones firmadas válidas durante una hora, con tolerancia de 30 segundos al reloj futuro. Al caducar, cierra y vuelve a abrir la Mini App.
 - Actualización cada 15 segundos mientras la lista está abierta y la aplicación visible/activa. Se detiene en segundo plano y al cerrar la lista. Los cambios guardados actualizan la vista con la propia respuesta del servidor.
 - D1 tiene transacciones para crear listas y una restricción parcial que designa una única lista principal por grupo. Crear otra lista no cierra automáticamente las anteriores.
-- Al fallar la publicación se conserva la lista y aparece **Publicar en el grupo**. Una reserva temporal evita reintentos simultáneos. La Bot API no ofrece claves de idempotencia para `sendMessage`: si Telegram acepta el mensaje pero se pierde su respuesta, un reintento puede duplicar ese mensaje. Los pedidos y listas no se duplican por ello.
+- Al fallar la publicación se conserva la lista y aparece **Publicar en el grupo**. Una reserva temporal evita reintentos simultáneos. La Bot API no ofrece claves de idempotencia para `sendMessage`: si Telegram acepta el mensaje pero se pierde su respuesta, un reintento puede duplicar ese mensaje. Los aportaciones y listas no se duplican por ello.
 - El cierre por fecha límite es efectivo en las consultas/escrituras sin procesos programados. No se envía un mensaje adicional al llegar la hora; al abrir el enlace se muestra cerrada.
-- No se almacenan mensajes normales del grupo. Solo identidades, nombres, títulos de grupo, listas, pedidos y metadatos necesarios para publicarlos. No se registran tokens, cabeceras de autenticación ni cuerpos de solicitudes en logs propios.
+- No se almacenan mensajes normales del grupo. Solo identidades, nombres, títulos de grupo, listas, aportaciones y metadatos necesarios para publicarlos. No se registran tokens, cabeceras de autenticación ni cuerpos de solicitudes en logs propios.
 
 ## Free-Tier Compliance
 
@@ -156,7 +156,7 @@ Revisión con documentación oficial y plan de la cuenta comprobados el **17 de 
 
 No utiliza Workers Paid, Pages, Durable Objects, R2, Queues, Workflows, Workers AI, proveedores externos de autenticación, bases de datos externas, pagos, anuncios ni servicios de pago. No requiere tarjeta de crédito para esta arquitectura en Free. No activa suscripciones ni actualiza planes. Las cuotas son compartidas con otras aplicaciones de la cuenta: la disponibilidad no es ilimitada. Al superar los límites, Cloudflare rechaza solicitudes/consultas hasta el restablecimiento aplicable; el proyecto no activa facturación automáticamente.
 
-El coste de lectura depende de cuántas personas mantengan abierta una lista y cuántos pedidos contenga. Una lista con 20 pedidos y 10 espectadores produce aproximadamente 48 000 filas de pedidos leídas por hora de visualización simultánea, además de las consultas de contexto. Consulta las métricas de D1 y Workers para el consumo real.
+El coste de lectura depende de cuántas personas mantengan abierta una lista y cuántos aportaciones contenga. Una lista con 20 aportaciones y 10 espectadores produce aproximadamente 48 000 filas de aportaciones leídas por hora de visualización simultánea, además de las consultas de contexto. Consulta las métricas de D1 y Workers para el consumo real.
 
 Fuentes oficiales:
 
@@ -170,3 +170,10 @@ Fuentes oficiales:
 - https://core.telegram.org/bots/webapps#direct-link-mini-apps
 - https://core.telegram.org/bots/api#getchatmember
 - https://core.telegram.org/bots/api#setwebhook
+
+
+### Eliminar listas
+
+Los administradores actuales del grupo pueden eliminar listas abiertas, cerradas o caducadas mediante `DELETE /api/lists/:id`. La interfaz solicita confirmación. El servidor verifica de nuevo la pertenencia y el rol de Telegram, elimina todas las aportaciones y retira la lista del historial y de las rutas de lectura/escritura. La operación D1 es transaccional. Se conserva una referencia mínima sin título ni descripción originales para que los enlaces de lanzamiento firmados sigan abriendo el historial del grupo. No se modifican otras listas ni los enlaces del grupo.
+
+La migración `0003_list_deletion.sql` debe aplicarse antes del despliegue.

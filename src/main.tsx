@@ -4,9 +4,9 @@ import './style.css';
 import { useScreenNavigation } from './navigation';
 
 interface Order { id: string; telegram_user_id: string; display_name: string; content: string }
-interface List { id: string; group_id: string; title: string; description: string; status: 'open' | 'closed'; writable: boolean; can_close: boolean; deadline: string | null; is_primary: number; publish_state: string; created_at: string }
+interface List { id: string; group_id: string; title: string; description: string; status: 'open' | 'closed'; writable: boolean; can_close: boolean; can_delete: boolean; deadline: string | null; is_primary: number; publish_state: string; created_at: string }
 interface Snapshot { list: List; orders: Order[]; published?: boolean; warning?: string }
-interface Session { user: { id: number }; group: { id: string; title: string } | null; admin: boolean; list_id: string | null; bot_username: string }
+interface Session { user: { id: number }; group: { id: string; title: string } | null; admin: boolean; list_id: string | null; list_deleted?: boolean; bot_username: string }
 interface History { lists: List[]; next_cursor: string | null }
 const webapp = window.Telegram?.WebApp;
 
@@ -23,7 +23,7 @@ const date = (value: string) => new Intl.DateTimeFormat('es-ES',{ dateStyle:'sho
 const readableError = (error: unknown) => error instanceof Error ? error.message : 'No se ha podido conectar. Vuelve a intentarlo.';
 
 function OrderRows({orders,userId}: {orders: Order[]; userId?: number}) {
-  return <>{!orders.length && <p className="py-3 text-sm muted">No hay pedidos todavía</p>}
+  return <>{!orders.length && <p className="py-3 text-sm muted">Todavía no hay aportaciones.</p>}
     {orders.map(order=><article key={order.id} className="order py-2">
       <h2 className="text-sm font-semibold break-words">{order.display_name}{order.telegram_user_id===String(userId) && <span className="font-normal muted"> · Tú</span>}</h2>
       <p className="whitespace-pre-wrap break-words text-sm">{order.content}</p>
@@ -46,6 +46,7 @@ function App() {
   const [description,setDescription] = useState('');
   const [deadline,setDeadline] = useState('');
   const [confirmClose,setConfirmClose] = useState(false);
+  const [confirmDelete,setConfirmDelete] = useState(false);
   const [summary,setSummary] = useState('');
   const requestId = useRef(crypto.randomUUID());
   const inFlight = useRef(false);
@@ -68,7 +69,7 @@ function App() {
     polling.current?.abort();
     const previousId=selectedId.current;
     selectedId.current=id;
-    setError(''); setNotice(''); setSummary(''); setConfirmClose(false); setBusy(true);
+    setError(''); setNotice(''); setSummary(''); setConfirmClose(false); setConfirmDelete(false); setBusy(true);
     try { apply(await api<Snapshot>(`/api/lists/${id}`),previousId!==id); await navigate('list', { key: `list:${id}`, instant: initial, resetScroll: previousId!==id }); }
     catch(e) { selectedId.current=previousId;setError(readableError(e)); }
     finally { setBusy(false); }
@@ -100,7 +101,8 @@ function App() {
           if (!mounted.current) return;
           setHistory(next);
           const primary=next.lists.find(list=>list.is_primary && list.status==='open');
-          if (primary) await openList(primary.id,true);
+          if (current.list_deleted) await navigate('history', { instant:true });
+          else if (primary) await openList(primary.id,true);
           else await navigate(current.admin ? 'create' : 'history', { instant: true });
         }
       } catch(e) { if (!controller.signal.aborted) setError(readableError(e)); }
@@ -158,9 +160,25 @@ function App() {
     finally {setBusy(false);}
   }
 
+  async function deleteList() {
+    if (!snapshot || !session?.group || busy) return;
+    const id=snapshot.list.id;
+    polling.current?.abort();mutating.current=true;setBusy(true);setError('');setNotice('');
+    try {
+      await api(`/api/lists/${id}`,'DELETE');
+      selectedId.current=null;setSnapshot(null);setContent('');dirtyRef.current=false;setDirty(false);
+      setConfirmDelete(false);setConfirmClose(false);setSummary('');
+      setHistory(previous=>({...previous,lists:previous.lists.filter(list=>list.id!==id)}));
+      await navigate('history', { direction:'back', resetScroll:true });
+      await loadHistory(session);
+      setNotice('Lista eliminada');
+    } catch(e) {setError(readableError(e));}
+    finally {mutating.current=false;setBusy(false);}
+  }
+
   async function copySummary() {
     if(!snapshot)return;
-    const text=`${snapshot.list.title}\n${snapshot.list.writable ? 'Lista abierta':'Lista cerrada'}\n\n${snapshot.orders.map(order=>`${order.display_name}\n${order.content}`).join('\n\n') || 'No hay pedidos todavía'}`;
+    const text=`${snapshot.list.title}\n${snapshot.list.writable ? 'Lista abierta':'Lista cerrada'}\n\n${snapshot.orders.map(order=>`${order.display_name}\n${order.content}`).join('\n\n') || 'Todavía no hay aportaciones.'}`;
     try {await navigator.clipboard.writeText(text);setNotice('Resumen copiado');setSummary('');}
     catch {setSummary(text);setNotice('Selecciona el resumen y cópialo.');}
   }
@@ -170,7 +188,7 @@ function App() {
 
   return <main className={`mx-auto max-w-lg px-4 py-3 ${panelScreen ? 'panel-layout':''}`}>
     <header className="mb-3 flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2.5"><img src="/bot-icon.jpg" alt="Listas" width={40} height={40} className="bot-avatar"/><p className="truncate text-sm muted">{session?.group?.title ?? 'Pedidos compartidos'}</p></div>
+      <div className="flex min-w-0 items-center gap-2.5"><img src="/bot-icon.jpg" alt="Listas" width={40} height={40} className="bot-avatar"/><p className="truncate text-sm muted">{session?.group?.title ?? 'Listas compartidas'}</p></div>
       {session?.group && (screen==='list' || screen==='create') && <button className="button secondary shrink-0" disabled={busy || transitioning} onClick={()=>{polling.current?.abort();void loadHistory(session);}}>Historial de listas</button>}
     </header>
     {error && <div role="alert" className="message error">{error}</div>}
@@ -184,7 +202,7 @@ function App() {
     <div ref={pageRef} className={`screen-content ${panelScreen ? 'screen-panel':''}`} inert={transitioning} aria-busy={transitioning || undefined}>
     {session?.group && screen==='create' && <form onSubmit={event=>{void create(event);}} className="space-y-3">
       <h1 tabIndex={-1} className="text-xl font-semibold">Crear lista</h1>
-      <label>Título de la lista<input autoComplete="off" value={title} onChange={event=>{setTitle(event.target.value);requestId.current=crypto.randomUUID();}} placeholder="Cena de hoy" required maxLength={100}/></label>
+      <label>Título de la lista<input autoComplete="off" value={title} onChange={event=>{setTitle(event.target.value);requestId.current=crypto.randomUUID();}} placeholder="Nombre de la lista" required maxLength={100}/></label>
       <label>Descripción <span className="muted">(opcional)</span><textarea value={description} onChange={event=>{setDescription(event.target.value);requestId.current=crypto.randomUUID();}} rows={2} maxLength={500}/></label>
       <label>Fecha límite <span className="muted">(opcional)</span><input type="datetime-local" value={deadline} onChange={event=>{setDeadline(event.target.value);requestId.current=crypto.randomUUID();}}/></label>
       <button className="button primary w-full" type="submit" disabled={busy || transitioning || !title.trim()}>{busy ? 'Creando…':'Crear lista'}</button>
@@ -202,9 +220,9 @@ function App() {
       {session.admin && <footer className="panel-footer"><button className="button primary w-full" disabled={busy || transitioning} onClick={()=>{void navigate('create');setError('');setNotice('');}}>Crear lista</button></footer>}
     </section>}
     {screen==='orders' && snapshot && <section className="browse-panel">
-      <h1 tabIndex={-1} className="text-lg font-semibold">Pedidos ({snapshot.orders.length})</h1>
+      <h1 tabIndex={-1} className="text-lg font-semibold">Aportaciones ({snapshot.orders.length})</h1>
       <p className="mb-2 text-sm muted break-words">{snapshot.list.title}</p>
-      <div className="browse-scroll" tabIndex={0} role="region" aria-label="Todos los pedidos">
+      <div className="browse-scroll" tabIndex={0} role="region" aria-label="Todas las aportaciones">
         <div className="orders"><OrderRows orders={snapshot.orders} userId={session?.user.id}/></div>
       </div>
       <footer className="panel-footer"><button className="button secondary w-full" disabled={busy || transitioning} onClick={()=>{void navigate('list', { direction: 'back', key: `list:${snapshot.list.id}` });}}>Volver a la lista</button></footer>
@@ -218,21 +236,28 @@ function App() {
           <p className={`status ${snapshot.list.writable ? 'open':''}`}>{snapshot.list.writable ? 'Lista abierta':'Lista cerrada'}</p>
         </div>
       </section>
-      <section aria-label={hasMoreOrders ? 'Vista previa de pedidos':'Pedidos'} className={`orders mb-3 ${hasMoreOrders ? 'orders-preview':''}`}>
+      <section aria-label={hasMoreOrders ? 'Vista previa de aportaciones':'Aportaciones'} className={`orders mb-3 ${hasMoreOrders ? 'orders-preview':''}`}>
         <OrderRows orders={snapshot.orders.slice(0,3)} userId={session?.user.id}/>
       </section>
-      {snapshot.list.writable && <form onSubmit={event=>{event.preventDefault();void mutate(`/api/lists/${snapshot.list.id}/my-order`,'PUT',{content},'Pedido guardado');}}>
-        <label><span className="order-label">Mi pedido:</span><textarea value={content} rows={2} maxLength={1000} required placeholder="¿Qué te apetece?" onChange={event=>{setContent(event.target.value);dirtyRef.current=true;setDirty(true);}}/></label>
+      {snapshot.list.writable && <form onSubmit={event=>{event.preventDefault();void mutate(`/api/lists/${snapshot.list.id}/my-order`,'PUT',{content},'Aportación guardada');}}>
+        <label><span className="order-label">Mi aportación:</span><textarea value={content} rows={2} maxLength={1000} required placeholder="Escribe tu aportación a la lista" onChange={event=>{setContent(event.target.value);dirtyRef.current=true;setDirty(true);}}/></label>
         <div className="action-row mt-2">
           <button className="button primary" disabled={busy || transitioning || !content.trim() || !dirty} type="submit">{busy ? 'Guardando…':'Guardar cambios'}</button>
-          {snapshot.orders.some(order=>order.telegram_user_id===String(session?.user.id)) && <button className="button destructive" type="button" disabled={busy || transitioning} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/my-order`,'DELETE',undefined,'Pedido eliminado');}}>Eliminar mi pedido</button>}
+          {snapshot.orders.some(order=>order.telegram_user_id===String(session?.user.id)) && <button className="button destructive" type="button" disabled={busy || transitioning} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/my-order`,'DELETE',undefined,'Aportación eliminada');}}>Eliminar mi aportación</button>}
         </div>
       </form>}
       {(hasMoreOrders || snapshot.list.can_close) && <div className="action-row mt-3">
-        {hasMoreOrders && <button className="button secondary" aria-label={`Ver pedidos (${snapshot.orders.length})`} disabled={busy || transitioning} onClick={()=>{setConfirmClose(false);void navigate('orders', { key: `orders:${snapshot.list.id}` });}}>Ver pedidos</button>}
-        {snapshot.list.can_close && <button className="button destructive" disabled={busy || transitioning} onClick={()=>setConfirmClose(true)}>Cerrar lista</button>}
+        {hasMoreOrders && <button className="button secondary" aria-label={`Ver aportaciones (${snapshot.orders.length})`} disabled={busy || transitioning} onClick={()=>{setConfirmClose(false);setConfirmDelete(false);void navigate('orders', { key: `orders:${snapshot.list.id}` });}}>Ver aportaciones</button>}
+        {snapshot.list.can_close && <button className="button destructive" disabled={busy || transitioning} onClick={()=>{setConfirmDelete(false);setConfirmClose(true);}}>Cerrar lista</button>}
       </div>}
-      {confirmClose && snapshot.list.can_close && <div className="message close-confirmation mt-2" role="group" aria-label="Confirmar cierre"><p className="text-sm">Los pedidos quedarán en modo de solo lectura.</p><div className="action-row mt-2"><button className="button destructive" disabled={busy || transitioning} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/close`,'POST',undefined,'Lista cerrada');}}>Confirmar cierre</button><button className="button secondary" disabled={busy || transitioning} onClick={()=>setConfirmClose(false)}>Cancelar</button></div></div>}
+      {confirmClose && snapshot.list.can_close && <div className="message close-confirmation mt-2" role="group" aria-label="Confirmar cierre"><p className="text-sm">Las aportaciones quedarán en modo de solo lectura.</p><div className="action-row mt-2"><button className="button destructive" disabled={busy || transitioning} onClick={()=>{void mutate(`/api/lists/${snapshot.list.id}/close`,'POST',undefined,'Lista cerrada');}}>Confirmar cierre</button><button className="button secondary" disabled={busy || transitioning} onClick={()=>setConfirmClose(false)}>Cancelar</button></div></div>}
+      {snapshot.list.can_delete && <div className="mt-3">
+        <button className="button destructive w-full" disabled={busy || transitioning} onClick={()=>{setConfirmClose(false);setConfirmDelete(true);}}>Eliminar lista</button>
+        {confirmDelete && <div className="message close-confirmation mt-2" role="group" aria-label="Confirmar eliminación">
+          <p className="text-sm">¿Eliminar «{snapshot.list.title}» y todas sus aportaciones? Esta acción no se puede deshacer.</p>
+          <div className="action-row mt-2"><button className="button destructive" disabled={busy || transitioning} onClick={()=>{void deleteList();}}>Confirmar eliminación</button><button className="button secondary" disabled={busy || transitioning} onClick={()=>setConfirmDelete(false)}>Cancelar</button></div>
+        </div>}
+      </div>}
       <div className="action-row secondary-actions mt-3">
         <button className="button secondary" onClick={()=>{void copySummary();}}>Copiar resumen</button>
         {session?.admin && <button className="button secondary" disabled={busy || transitioning} onClick={()=>{void navigate('create');setError('');setNotice('');}}>Crear lista</button>}
