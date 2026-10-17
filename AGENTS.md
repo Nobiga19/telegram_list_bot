@@ -10,12 +10,13 @@
 
 ## Despliegue habitual: GitHub → Cloudflare Workers Builds
 
-- Los commits nuevos en `main` activan automáticamente el trigger **Deploy main - telegram-list-bot** de Workers Builds. No hace falta crear una rama `main` nueva.
+- El trigger **Deploy main - telegram-list-bot** de Workers Builds está configurado para nuevos commits en `main`. No hace falta crear una rama `main` nueva.
+- Estado verificado el 18-10-2026: build, despliegue, salud y coincidencia de assets funcionan mediante el trigger de Cloudflare. La recepción automática del evento push aún no está comprobada: los commits hechos por la API de GitHub en esta sesión no generaron un build observable. Revisar el acceso del repositorio en la aplicación GitHub **Cloudflare Workers and Pages** (GitHub pide reautenticación). No afirmar que el push automático funciona hasta observar un build con origen push.
 - Raíz: `/`. Node.js: `24`. Cloudflare instala las dependencias del lockfile.
 - Build: `npm run typecheck && npm test && npm run build`.
 - Deploy: `npx wrangler deploy --keep-vars && node scripts/verify-deployment.mjs`.
 - Los secretos de ejecución ya están configurados en el Worker. No introducirlos como variables de compilación ni recrearlos.
-- Publicar los cambios autorizados mediante GitHub; después esperar el build correspondiente al SHA publicado. No lanzar otro despliegue manual mientras el automático esté pendiente o ejecutándose.
+- Publicar los cambios autorizados mediante GitHub; después buscar el build correspondiente al SHA publicado. No lanzar otro build mientras ya exista uno pendiente o ejecutándose para ese SHA. Si no aparece un build automático, iniciar una sola vez el trigger configurado mediante la API Workers Builds (`POST /accounts/{account_id}/builds/triggers/{trigger_uuid}/builds`, con `branch: main` y el SHA exacto), y esperar su resultado. Este mecanismo ya está validado y no requiere preparar una subida manual de assets ni nuevas credenciales.
 - Consultar los triggers del Worker por API si es necesario; el trigger configurado es `3a574b60-bc82-409c-8f81-7df6bc210dc9`. Usar la credencial de build registrada en Cloudflare sin leer ni exportar su valor.
 - Confirmar que el build y el despliegue han terminado correctamente; comprobar `/api/health` y que el HTML de producción referencia los nuevos assets. No declarar completado un cambio solo porque el commit se haya guardado.
 - Si falla el build, revisar sus logs y corregir la causa. No saltarse las comprobaciones ni añadir servicios alternativos. Usar despliegue manual únicamente como recuperación justificada cuando la integración no esté disponible y esté dentro del alcance autorizado.

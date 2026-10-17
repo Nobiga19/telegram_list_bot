@@ -70,12 +70,12 @@ Los tipos de bindings/runtime se generan con Wrangler. Las pruebas utilizan un t
 
 ## Despliegue automático desde GitHub
 
-El Worker `telegram-list-bot` está conectado a este repositorio mediante **Cloudflare Workers Builds**. Cada nuevo commit en `main` activa **Deploy main - telegram-list-bot**, con Node.js 24 y raíz `/`:
+El Worker `telegram-list-bot` está conectado a este repositorio mediante **Cloudflare Workers Builds**. El trigger **Deploy main - telegram-list-bot** está configurado para commits en `main`, con Node.js 24 y raíz `/`:
 
 - Build: `npm run typecheck && npm test && npm run build`.
 - Deploy: `npx wrangler deploy --keep-vars && node scripts/verify-deployment.mjs`.
 
-Las credenciales se gestionan dentro de Cloudflare y los secretos de ejecución se conservan en el Worker. No hay que volver a desplegar manualmente después de hacer push. El script de verificación comprueba automáticamente la salud y que los assets publicados coinciden byte a byte con el build. Antes de dar por terminado un cambio, comprobar que el build del SHA publicado termina correctamente y que `/api/health` y los assets de producción responden. El procedimiento permanente para agentes está en `AGENTS.md`.
+Las credenciales se gestionan dentro de Cloudflare y los secretos de ejecución se conservan en el Worker. El build, el despliegue y la verificación desde el trigger se han probado correctamente. La recepción del evento push sigue pendiente de comprobar: en esta sesión los commits creados por API no generaron builds automáticos observables. Si no aparece un build del SHA publicado, se puede iniciar una sola vez el trigger nativo mediante la API Workers Builds; no es necesario preparar otro despliegue manual de assets. GitHub exige reautenticación para revisar el acceso de la aplicación Cloudflare al repositorio. El script de verificación comprueba automáticamente la salud y que los assets publicados coinciden byte a byte con el build. Antes de dar por terminado un cambio, comprobar que el build del SHA publicado termina correctamente y que `/api/health` y los assets de producción responden. El procedimiento permanente para agentes está en `AGENTS.md`.
 
 Workers Builds incluye 3.000 minutos mensuales y un build concurrente en Free, compartidos por la cuenta; no se ha cambiado el plan ni activado facturación. Límites comprobados el 18 de octubre de 2026: https://developers.cloudflare.com/workers/ci-cd/builds/limits-and-pricing/.
 
