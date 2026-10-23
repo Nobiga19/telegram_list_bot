@@ -43,3 +43,9 @@ Responder brevemente en español con el resultado, la validación y las limitaci
 - Solo los administradores actuales de Telegram pueden eliminar listas abiertas, cerradas o caducadas; comprobarlo en el servidor. Botón rojo con confirmación explícita.
 - Eliminar las aportaciones y ocultar la lista de todas las lecturas. Conservar únicamente la referencia de lanzamiento y metadatos mínimos para que los enlaces firmados existentes permitan volver al historial del grupo, sin recuperar el contenido eliminado.
 - Aplicar migraciones D1 pendientes antes de desplegar código que las requiera.
+
+## Teclado de Telegram
+
+- No instalar `ReplyKeyboardMarkup`. Mantener el acceso con el botón inline «Abrir» y `/listas`.
+- Retirar los teclados antiguos una sola vez por grupo mediante `ReplyKeyboardRemove`, sin selección de usuarios, con texto invisible y envío silencioso. Conservar el mensaje para los clientes desconectados y el estado D1 para evitar retiradas repetidas.
+- Telegram no emite eventos al abrir un chat: completar la retirada en la siguiente actividad recibida o con `/listas`. No borrar mensajes existentes ni anunciar la limpieza.

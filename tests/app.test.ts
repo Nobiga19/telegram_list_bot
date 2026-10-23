@@ -61,7 +61,17 @@ beforeEach(async()=>{
     return Response.json({ok:true,result:{message_id:99}});
   }));
 });
-afterEach(()=>{vi.unstubAllGlobals();});
+afterEach(()=>{
+  vi.unstubAllGlobals();
+  for (const call of calls) {
+    const markup=call.data.reply_markup;
+    if (markup) {
+      expect(markup).not.toHaveProperty('keyboard');
+      expect(markup).not.toHaveProperty('is_persistent');
+      expect(markup).not.toHaveProperty('one_time_keyboard');
+    }
+  }
+});
 
 describe('Telegram authentication',()=>{
   it('validates signature, including new signature field, and extracts server identity',async()=>{
@@ -215,27 +225,91 @@ describe('Webhook group association',()=>{
     await webhook({update_id:9001,my_chat_member:{...event,date:1001}});
     expect(await env.DB.prepare('SELECT bot_is_admin FROM groups WHERE telegram_chat_id=?').bind('-789').first('bot_is_admin')).toBe(0);
   });
+  it('ignores bot messages and unknown groups during automatic cleanup',async()=>{
+    for(const message of [{chat:{id:-100123,type:'supergroup'},text:'hola',from:{is_bot:true}},{chat:{id:-999,type:'group'},text:'hola'},{chat:{id:10,type:'private'},text:'hola'},{chat:{id:-100123,type:'channel'},text:'hola'}]) {
+      expect((await webhook({update_id:350,message})).status).toBe(200);
+    }
+    expect(calls).toHaveLength(0);
+  });
   it('preserves list associations when a group migrates to a supergroup',async()=>{
     await create();
+    await webhook({update_id:99,message:{chat:{id:-100123,type:'group'},text:'hola'}});
     const migration={update_id:101,message:{chat:{id:-100123,type:'group',title:'Nuevo'},migrate_to_chat_id:-100999}};
     expect((await webhook(migration)).status).toBe(200);
     expect(await env.DB.prepare('SELECT telegram_chat_id FROM groups WHERE id=?').bind(groupA).first('telegram_chat_id')).toBe('-100999');
     expect(await env.DB.prepare('SELECT group_id FROM lists WHERE id=?').bind(listId).first('group_id')).toBe(groupA);
     await webhook(migration); // Duplicate migrations are harmless.
+    calls=[];
+    await webhook({update_id:102,message:{chat:{id:-100999,type:'supergroup'},text:'hola'}});
+    expect(calls).toHaveLength(0); // Preserve cleanup metadata across migration.
   });
-  it('provides the persistent group keyboard and a group-scoped launch link from the command menu',async()=>{
-    expect((await webhook({update_id:200,message:{chat:{id:-100123,type:'supergroup'},text:'/listas'}})).status).toBe(200);
+  it.each(['/listas',' /LISTAS ',`/listas@ourizo_telegram_list_bot`,'📋 Listas'])('removes old keyboards once and retains inline Abrir for %s',async text=>{
+    expect((await webhook({update_id:200,message:{chat:{id:-100123,type:'supergroup'},text}})).status).toBe(200);
     const sent=calls.filter(x=>x.method==='sendMessage');
     expect(sent).toHaveLength(2);
-    expect(sent[0].data.reply_markup).toMatchObject({keyboard:[[{text:'📋 Listas'}]],is_persistent:true,one_time_keyboard:false});
+    expect(sent[0].data).toEqual({chat_id:'-100123',text:'\u2063',disable_notification:true,reply_markup:{remove_keyboard:true,selective:false}});
     expect(sent[1].data.text).toBe('\u2063');
-    expect(JSON.stringify(sent[1].data.reply_markup)).toContain(`startapp=g_${groupA}`);
+    expect(sent[1].data.reply_markup).toEqual({inline_keyboard:[[{text:'Abrir',url:`https://t.me/${env.BOT_USERNAME}?startapp=g_${groupA}&mode=compact`}]]});
+    expect(await env.DB.prepare('SELECT keyboard_cleanup_message_id FROM groups WHERE id=?').bind(groupA).first('keyboard_cleanup_message_id')).toBe(99);
     calls=[];
-    await webhook({update_id:201,message:{chat:{id:-100123,type:'supergroup'},text:'📋 Listas'}});
+    await webhook({update_id:201,message:{chat:{id:-100123,type:'supergroup'},text:'/listas'}});
     expect(calls.filter(x=>x.method==='sendMessage')).toHaveLength(1);
-    expect(calls.find(x=>x.method==='sendMessage')?.data.text).toBe('\u2063');
+    expect(calls[0].data.reply_markup).toHaveProperty('inline_keyboard');
+  });
+  it('silently cleans up an existing group on activity without extra launch messages or repeated cleanup',async()=>{
+    await create();
+    await request(`/api/lists/${listId}/my-order`,'PUT',{content:'Conservar'},20);
+    const before=await env.DB.prepare('SELECT * FROM lists WHERE id=?').bind(listId).first();
+    calls=[];
+    const update={update_id:300,message:{chat:{id:-100123,type:'supergroup'},text:'hola'}};
+    for (const body of [update,update,{...update,update_id:301,message:{...update.message,text:'otro mensaje'}}]) expect((await webhook(body)).status).toBe(200);
+    expect(calls).toEqual([{method:'sendMessage',data:{chat_id:'-100123',text:'\u2063',disable_notification:true,reply_markup:{remove_keyboard:true,selective:false}}}]);
+    expect(await env.DB.prepare('SELECT * FROM lists WHERE id=?').bind(listId).first()).toEqual(before);
+    expect(await env.DB.prepare('SELECT content FROM orders WHERE list_id=?').bind(listId).first('content')).toBe('Conservar');
+    expect(await env.DB.prepare('SELECT keyboard_cleanup_message_id FROM groups WHERE id=?').bind(groupB).first('keyboard_cleanup_message_id')).toBeNull();
+  });
+  it('also retires keyboards in existing groups where the bot is an ordinary member',async()=>{
+    await env.DB.prepare('UPDATE groups SET bot_is_admin=0 WHERE id=?').bind(groupA).run();
+    expect((await webhook({update_id:305,message:{chat:{id:-100123,type:'group'},text:'hola'}})).status).toBe(200);
+    expect(calls).toEqual([{method:'sendMessage',data:{chat_id:'-100123',text:'\u2063',disable_notification:true,reply_markup:{remove_keyboard:true,selective:false}}}]);
+    expect(await env.DB.prepare('SELECT bot_is_admin FROM groups WHERE id=?').bind(groupA).first('bot_is_admin')).toBe(0);
+  });
+  it('uses a durable reservation to avoid duplicate cleanup for concurrent activity',async()=>{
+    const message={chat:{id:-100123,type:'supergroup'},text:'hola'};
+    const responses=await Promise.all([webhook({update_id:310,message}),webhook({update_id:311,message})]);
+    expect(responses.map(response=>response.status)).toEqual([200,200]);
+    expect(calls.filter(call=>call.method==='sendMessage')).toHaveLength(1);
+  });
+  it('retries a failed removal and recovers an abandoned reservation',async()=>{
+    vi.mocked(fetch).mockImplementationOnce(async()=>Response.json({ok:false,error_code:500},{status:500}));
+    const update={update_id:320,message:{chat:{id:-100123,type:'supergroup'},text:'hola'}};
+    expect((await webhook(update)).status).toBe(502);
+    expect(await env.DB.prepare('SELECT keyboard_cleanup_message_id FROM groups WHERE id=?').bind(groupA).first('keyboard_cleanup_message_id')).toBeNull();
+    expect(await env.DB.prepare('SELECT keyboard_cleanup_started_at FROM groups WHERE id=?').bind(groupA).first('keyboard_cleanup_started_at')).toBeNull();
+    await env.DB.prepare('UPDATE groups SET keyboard_cleanup_started_at=? WHERE id=?').bind(Date.now()-61000,groupA).run();
+    expect((await webhook(update)).status).toBe(200);
+    expect(calls.filter(call=>call.method==='sendMessage')).toHaveLength(1);
+  });
+  it('recovers unregistered groups from /listas and removes the old keyboard without changing the opaque link',async()=>{
+    statuses.set('-999:123456','administrator');
+    expect((await webhook({update_id:330,message:{chat:{id:-999,type:'group',title:'Antiguo'},text:'/listas'}})).status).toBe(200);
+    const group=await env.DB.prepare('SELECT id FROM groups WHERE telegram_chat_id=?').bind('-999').first<{id:string}>();
+    expect(group?.id).toBeTruthy();
+    const sent=calls.filter(call=>call.method==='sendMessage');
+    expect(sent).toHaveLength(2);
+    expect(sent[0].data.reply_markup).toHaveProperty('remove_keyboard',true);
+    expect(JSON.stringify(sent[1].data.reply_markup)).toContain(`startapp=g_${group!.id}`);
+  });
+  it('keeps one cleanup across permission changes and does not announce unchanged membership',async()=>{
+    const event={date:1000,chat:{id:-100123,type:'supergroup'},old_chat_member:{status:'administrator'},new_chat_member:{status:'member'}};
+    await webhook({update_id:340,my_chat_member:event});
+    await webhook({update_id:341,my_chat_member:{...event,date:1001,old_chat_member:{status:'member'},new_chat_member:{status:'administrator'}}});
+    await webhook({update_id:342,my_chat_member:{...event,date:1002,new_chat_member:{status:'administrator'}}});
+    expect(calls.filter(call=>(call.data.reply_markup as {remove_keyboard?:boolean})?.remove_keyboard)).toHaveLength(1);
+    expect(calls.filter(call=>call.method==='sendMessage')).toHaveLength(3);
   });
   it('ignores commands addressed to other bots, bot messages and unrelated group text',async()=>{
+    await env.DB.prepare('UPDATE groups SET keyboard_cleanup_message_id=99 WHERE id=?').bind(groupA).run();
     expect(isListsRequest('/listas@another_bot',env.BOT_USERNAME)).toBe(false);
     expect(isListsRequest(`/listas@${env.BOT_USERNAME}`,env.BOT_USERNAME)).toBe(true);
     for(const message of [{text:'/listas@another_bot'},{text:'hola'},{text:'📋 Listas',from:{is_bot:true}}]) {

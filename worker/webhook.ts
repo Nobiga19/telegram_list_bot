@@ -12,26 +12,36 @@ interface Update {
 // Invisible separator keeps the launch message text-free while satisfying Telegram's non-empty text requirement.
 const launchMessageText = '\u2063';
 
-const groupKeyboard = {
-  keyboard: [[{ text: '📋 Listas' }]],
-  resize_keyboard: true,
-  is_persistent: true,
-  one_time_keyboard: false,
-};
-
 export function isListsRequest(text: string, botUsername: string): boolean {
   if (text.trim() === '📋 Listas') return true;
   const command = /^\/listas(?:@([a-zA-Z0-9_]+))?(?:\s|$)/i.exec(text.trim());
   return !!command && (!command[1] || command[1].toLowerCase() === botUsername.toLowerCase());
 }
 
-async function sendGroupKeyboard(env: Env, chatId: string) {
-  await telegram(env, 'sendMessage', {
-    chat_id: chatId,
-    text: '📋 Listas',
-    disable_notification: true,
-    reply_markup: groupKeyboard,
-  });
+async function removeLegacyKeyboard(env: Env, group: Group) {
+  if (group.keyboard_cleanup_message_id !== null) return;
+  // A durable reservation prevents duplicate updates/concurrent requests from spamming a group.
+  const startedAt = Date.now();
+  const claimed = await env.DB.prepare(`UPDATE groups SET keyboard_cleanup_started_at=?
+    WHERE id=? AND keyboard_cleanup_message_id IS NULL
+    AND (keyboard_cleanup_started_at IS NULL OR keyboard_cleanup_started_at < ?)`)
+    .bind(startedAt,group.id,startedAt-60000).run();
+  if (!claimed.meta.changes) return;
+  try {
+    const message = await telegram<TelegramMessage>(env, 'sendMessage', {
+      chat_id: group.telegram_chat_id,
+      text: launchMessageText,
+      disable_notification: true,
+      reply_markup: { remove_keyboard: true, selective: false },
+    });
+    // Keep this message so offline clients also receive the removal. Never delete old messages.
+    await env.DB.prepare('UPDATE groups SET keyboard_cleanup_message_id=?,keyboard_cleanup_started_at=NULL WHERE id=? AND keyboard_cleanup_started_at=?')
+      .bind(message.message_id,group.id,startedAt).run();
+  } catch (error) {
+    await env.DB.prepare('UPDATE groups SET keyboard_cleanup_started_at=NULL WHERE id=? AND keyboard_cleanup_started_at=?')
+      .bind(group.id,startedAt).run();
+    throw error;
+  }
 }
 
 export async function handleWebhook(request: Request, env: Env): Promise<Response> {
@@ -55,11 +65,11 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
       (canonical.last_announced_event_date === event.date && canonical.last_announced_update_id === update.update_id)) return Response.json({ok:true});
     if (['member','administrator'].includes(event.new_chat_member.status) &&
       (!previous || event.old_chat_member.status !== event.new_chat_member.status)) {
+      await removeLegacyKeyboard(env,canonical);
       await telegram<TelegramMessage>(env, 'sendMessage', { chat_id: chatId,
         text: admin ? launchMessageText : 'Para proteger las listas, haz administrador al bot. No necesita borrar mensajes ni gestionar miembros.',
         reply_markup: { inline_keyboard: [[{ text: 'Abrir', url: launchLink(env, `g_${canonical.id}`) }]] },
       });
-      if (admin) await sendGroupKeyboard(env,chatId);
     }
     await env.DB.prepare('UPDATE groups SET last_announced_update_id=?,last_announced_event_date=? WHERE id=? AND last_update_id=? AND last_event_date=?')
       .bind(update.update_id,event.date,canonical.id,update.update_id,event.date).run();
@@ -95,12 +105,17 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
         group=await env.DB.prepare('SELECT * FROM groups WHERE telegram_chat_id=?').bind(chatId).first<Group>();
       }
       if (!group) throw new AppError(503,'No se ha podido recuperar el grupo.');
-      if (message.text.trim() !== '📋 Listas') await sendGroupKeyboard(env,chatId);
+      await removeLegacyKeyboard(env,group);
       await telegram(env,'sendMessage',{
         chat_id:chatId,
         text:launchMessageText,
         reply_markup:{inline_keyboard:[[{text:'Abrir',url:launchLink(env,`g_${group.id}`)}]]},
       });
+    } else if (!oldId && !message.from?.is_bot) {
+      // Existing groups need no reinstallation or manual keyboard switch. Telegram does not
+      // emit an update when a user opens a chat, so clean up on the next received activity.
+      const group = await env.DB.prepare('SELECT * FROM groups WHERE telegram_chat_id=?').bind(String(message.chat.id)).first<Group>();
+      if (group) await removeLegacyKeyboard(env,group);
     }
   }
   if (message?.chat.type === 'private' && message.text?.startsWith('/start')) {

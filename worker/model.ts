@@ -1,7 +1,7 @@
 import { AppError, type Identity } from './auth';
 import { telegram, isMember, isAdmin, type ChatMember } from './telegram';
 
-export interface Group { id: string; telegram_chat_id: string; title: string; bot_is_admin: number; last_update_id: number; last_announced_update_id: number; last_event_date: number; last_announced_event_date: number }
+export interface Group { id: string; telegram_chat_id: string; title: string; bot_is_admin: number; last_update_id: number; last_announced_update_id: number; last_event_date: number; last_announced_event_date: number; keyboard_cleanup_message_id: number | null; keyboard_cleanup_started_at: number | null }
 export interface List {
   id: string; group_id: string; deleted_at: string | null; title: string; description: string; status: 'open' | 'closed'; is_primary: number;
   created_by: string; created_at: string; closed_at: string | null; deadline: string | null;
